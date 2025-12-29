@@ -357,8 +357,10 @@ def _register_routes(app: FastAPI) -> None:
         from ace_platform.db.session import async_session_context
 
         try:
+            from sqlalchemy import text
+
             async with async_session_context() as db:
-                await db.execute("SELECT 1")
+                await db.execute(text("SELECT 1"))
             db_status = "connected"
         except Exception as e:
             logger.error(f"Database health check failed: {e}")

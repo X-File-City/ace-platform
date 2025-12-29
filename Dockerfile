@@ -52,6 +52,7 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --chown=ace:ace ace_platform ./ace_platform
 COPY --chown=ace:ace ace_core ./ace_core
 COPY --chown=ace:ace pyproject.toml ./
+COPY --chown=ace:ace alembic.ini ./
 
 # Install the package in development mode for imports to work
 RUN pip install --no-cache-dir -e .
