@@ -17,8 +17,17 @@ from ace_platform.mcp.auth import (
     authenticate_mcp_request,
     require_playbook_access,
 )
-from ace_platform.mcp.server import mcp, run_server
 from ace_platform.mcp.tools import DEFAULT_SCOPES, MCPScope, validate_scopes
+
+
+def __getattr__(name: str):
+    """Lazy import for server module to avoid circular import when running as __main__."""
+    if name in ("mcp", "run_server"):
+        from ace_platform.mcp import server
+
+        return getattr(server, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     "mcp",

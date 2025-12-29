@@ -96,7 +96,8 @@ FROM production as mcp
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:${MCP_SERVER_PORT}/health || exit 1
 
-CMD ["python", "-m", "ace_platform.mcp.server"]
+# Run in SSE mode for HTTP transport (required for Docker health checks)
+CMD ["python", "-m", "ace_platform.mcp.server", "sse"]
 
 # ============================================================================
 # Stage 6: Celery worker target

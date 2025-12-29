@@ -16,8 +16,11 @@ from typing import Annotated
 from uuid import UUID
 
 from mcp.server.fastmcp import Context, FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.requests import Request
+from starlette.responses import JSONResponse, Response
 
 from ace_platform.config import get_settings
 from ace_platform.core.api_keys import authenticate_api_key_async
@@ -54,10 +57,43 @@ async def mcp_lifespan(server: FastMCP) -> AsyncIterator[MCPContext]:
 
 
 # Create the MCP server instance
+# Configure transport security to allow connections from Docker/Kubernetes
+_transport_security = TransportSecuritySettings(
+    enable_dns_rebinding_protection=False,  # Disable for containerized deployment
+    allowed_hosts=["*"],  # Allow health checks from any host
+    allowed_origins=["*"],  # Allow any origin
+)
+
 mcp = FastMCP(
     name="ACE Platform",
     lifespan=mcp_lifespan,
+    host=settings.mcp_server_host,
+    port=settings.mcp_server_port,
+    transport_security=_transport_security,
 )
+
+
+# Health check endpoints for Docker/Kubernetes
+@mcp.custom_route("/health", methods=["GET"])
+async def health_check(request: Request) -> Response:
+    """Health check endpoint - returns healthy if server is running."""
+    return JSONResponse({"status": "healthy", "service": "ace-mcp"})
+
+
+@mcp.custom_route("/ready", methods=["GET"])
+async def ready_check(request: Request) -> Response:
+    """Readiness check endpoint - verifies database connectivity."""
+    try:
+        from sqlalchemy import text
+
+        async with AsyncSessionLocal() as db:
+            await db.execute(text("SELECT 1"))
+        return JSONResponse({"status": "ready", "database": "connected"})
+    except Exception:
+        return JSONResponse(
+            {"status": "not_ready", "database": "disconnected"},
+            status_code=503,
+        )
 
 
 # Helper to get database session from context
@@ -494,14 +530,8 @@ def run_server(transport: str = "stdio") -> None:
                    Use 'stdio' for local development with Claude Desktop.
                    Use 'sse' for web-based clients.
     """
-    if transport == "sse":
-        mcp.run(
-            transport="sse",
-            host=settings.mcp_server_host,
-            port=settings.mcp_server_port,
-        )
-    else:
-        mcp.run(transport="stdio")
+    # Host and port are configured at FastMCP initialization
+    mcp.run(transport=transport)
 
 
 if __name__ == "__main__":
