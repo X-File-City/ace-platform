@@ -110,7 +110,7 @@ def apply_curator_operations(playbook_text, operations, next_id):
     lines = playbook_text.strip().split("\n")
 
     # Build section map
-    sections = {}
+    sections = {"general": []}  # Initialize general section for content before any ## header
     current_section = "general"
     section_line_map = {}  # Track which line each section header is on
 
@@ -149,10 +149,17 @@ def apply_curator_operations(playbook_text, operations, next_id):
             section_raw = op.get("section", "general")
             section = section_raw.lower().replace(" ", "_").replace("&", "and")
 
-            # Check if section exists, if not use 'others'
-            if section not in sections and section != "general":
-                print(f"Warning: Section '{section_raw}' not found, adding to OTHERS")
-                section = "others"
+            # Check if section exists, if not use first available section or 'others'
+            if section not in sections:
+                # Try to find a reasonable default section
+                available_sections = [s for s in sections.keys() if s != "general"]
+                if available_sections:
+                    fallback = available_sections[0]
+                    print(f"Warning: Section '{section_raw}' not found, adding to '{fallback}'")
+                    section = fallback
+                else:
+                    print(f"Warning: Section '{section_raw}' not found, adding to OTHERS")
+                    section = "others"
 
             slug = get_section_slug(section)
             new_id = f"{slug}-{next_id:05d}"

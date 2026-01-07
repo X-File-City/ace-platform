@@ -122,11 +122,12 @@ class Curator:
             print(f"✅ Curator JSON schema validated successfully: {len(operations)} operations")
 
             # Log detailed diff for each operation before applying
-            for op in operations:
-                try:
-                    log_curator_operation_diff(Path(log_dir).parent, op, current_playbook, call_id)
-                except Exception as e:
-                    print(f"Warning: Failed to log curator operation diff: {e}")
+            if log_dir is not None:
+                for op in operations:
+                    try:
+                        log_curator_operation_diff(Path(log_dir).parent, op, current_playbook, call_id)
+                    except Exception as e:
+                        print(f"Warning: Failed to log curator operation diff: {e}")
 
             # Apply operations to playbook
             updated_playbook, next_global_id = apply_curator_operations(
