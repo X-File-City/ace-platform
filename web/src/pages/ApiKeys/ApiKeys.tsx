@@ -374,10 +374,7 @@ function NewKeyModal({ apiKey, onClose }: { apiKey: ApiKeyCreateResponse; onClos
 
 Store the API key in the ACE_API_KEY environment variable for security.`;
 
-  const claudeCommand = `claude mcp add ace \\
-  --transport sse \\
-  --url ${mcpServerUrl} \\
-  --env ACE_API_KEY=${apiKey.key}`;
+  const claudeCommand = `claude mcp add --transport sse ace ${mcpServerUrl} -e ACE_API_KEY=${apiKey.key}`;
 
   const jsonConfig = JSON.stringify({
     "ace": {
