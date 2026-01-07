@@ -306,6 +306,58 @@ async def test_evolution_job_failed(async_session: AsyncSession, test_playbook: 
     return job
 
 
+class TestGetApiKey:
+    """Tests for get_api_key helper function."""
+
+    def test_returns_none_when_no_key_provided(self, monkeypatch):
+        """Test that None is returned when no API key is available."""
+        from ace_platform.mcp.server import get_api_key
+
+        monkeypatch.delenv("ACE_API_KEY", raising=False)
+        result = get_api_key()
+        assert result is None
+
+    def test_returns_env_var_when_set(self, monkeypatch):
+        """Test that env var is returned when set and no parameter passed."""
+        from ace_platform.mcp.server import get_api_key
+
+        monkeypatch.setenv("ACE_API_KEY", "ace_env_key_123")
+        result = get_api_key()
+        assert result == "ace_env_key_123"
+
+    def test_returns_parameter_when_passed(self, monkeypatch):
+        """Test that parameter is returned when passed."""
+        from ace_platform.mcp.server import get_api_key
+
+        monkeypatch.delenv("ACE_API_KEY", raising=False)
+        result = get_api_key("ace_param_key_456")
+        assert result == "ace_param_key_456"
+
+    def test_parameter_takes_priority_over_env_var(self, monkeypatch):
+        """Test that parameter takes priority when both are available."""
+        from ace_platform.mcp.server import get_api_key
+
+        monkeypatch.setenv("ACE_API_KEY", "ace_env_key_123")
+        result = get_api_key("ace_param_key_456")
+        assert result == "ace_param_key_456"
+
+    def test_empty_string_parameter_falls_back_to_env_var(self, monkeypatch):
+        """Test that empty string parameter falls back to env var."""
+        from ace_platform.mcp.server import get_api_key
+
+        monkeypatch.setenv("ACE_API_KEY", "ace_env_key_123")
+        result = get_api_key("")
+        assert result == "ace_env_key_123"
+
+    def test_none_parameter_falls_back_to_env_var(self, monkeypatch):
+        """Test that None parameter falls back to env var."""
+        from ace_platform.mcp.server import get_api_key
+
+        monkeypatch.setenv("ACE_API_KEY", "ace_env_key_123")
+        result = get_api_key(None)
+        assert result == "ace_env_key_123"
+
+
 class TestExtractSection:
     """Tests for _extract_section helper function."""
 

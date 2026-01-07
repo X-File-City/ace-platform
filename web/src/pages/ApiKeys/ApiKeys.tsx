@@ -13,6 +13,8 @@ import {
   Clock,
   AlertCircle,
   Shield,
+  Terminal,
+  Info,
 } from 'lucide-react';
 import type { ApiKey, ApiKeyCreate, ApiKeyCreateResponse } from '../../types';
 import styles from './ApiKeys.module.css';
@@ -258,6 +260,16 @@ function CreateKeyModal({ onClose, onCreate, isLoading }: CreateModalProps) {
     });
   };
 
+  const toggleAllScopes = () => {
+    if (selectedScopes.size === AVAILABLE_SCOPES.length) {
+      setSelectedScopes(new Set());
+    } else {
+      setSelectedScopes(new Set(AVAILABLE_SCOPES.map((s) => s.id)));
+    }
+  };
+
+  const allSelected = selectedScopes.size === AVAILABLE_SCOPES.length;
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onCreate({
@@ -282,6 +294,15 @@ function CreateKeyModal({ onClose, onCreate, isLoading }: CreateModalProps) {
 
           <div className={styles.scopesSection}>
             <label className={styles.scopesLabel}>Permissions</label>
+            <label className={styles.selectAllOption}>
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onChange={toggleAllScopes}
+                className={styles.scopeCheckbox}
+              />
+              <span className={styles.selectAllLabel}>Select All</span>
+            </label>
             <div className={styles.scopesGrid}>
               {AVAILABLE_SCOPES.map((scope) => (
                 <label key={scope.id} className={styles.scopeOption}>
@@ -335,11 +356,51 @@ function CreateKeyModal({ onClose, onCreate, isLoading }: CreateModalProps) {
 
 function NewKeyModal({ apiKey, onClose }: { apiKey: ApiKeyCreateResponse; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
+  const [setupTab, setSetupTab] = useState<'prompt' | 'claude' | 'json'>('prompt');
+  const [setupCopied, setSetupCopied] = useState(false);
 
   const copyToClipboard = async () => {
     await navigator.clipboard.writeText(apiKey.key);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const mcpServerUrl = 'https://api.aceplatform.io/mcp/sse';
+
+  const promptInstructions = `Set up the ACE Platform MCP server with these settings:
+- Server Name: ace
+- Server URL: ${mcpServerUrl}
+- API Key: ${apiKey.key}
+
+Store the API key in the ACE_API_KEY environment variable for security.`;
+
+  const claudeCommand = `claude mcp add --transport sse ace ${mcpServerUrl} -e ACE_API_KEY=${apiKey.key}`;
+
+  const jsonConfig = JSON.stringify({
+    "ace": {
+      "transport": "sse",
+      "url": mcpServerUrl,
+      "env": {
+        "ACE_API_KEY": apiKey.key
+      }
+    }
+  }, null, 2);
+
+  const getSetupContent = () => {
+    switch (setupTab) {
+      case 'prompt':
+        return promptInstructions;
+      case 'claude':
+        return claudeCommand;
+      case 'json':
+        return jsonConfig;
+    }
+  };
+
+  const copySetupContent = async () => {
+    await navigator.clipboard.writeText(getSetupContent());
+    setSetupCopied(true);
+    setTimeout(() => setSetupCopied(false), 2000);
   };
 
   return (
@@ -368,6 +429,67 @@ function NewKeyModal({ apiKey, onClose }: { apiKey: ApiKeyCreateResponse; onClos
           {apiKey.expires_at && (
             <p><strong>Expires:</strong> {new Date(apiKey.expires_at).toLocaleDateString()}</p>
           )}
+        </div>
+
+        {/* Setup Instructions */}
+        <div className={styles.setupSection}>
+          <h3>
+            <Terminal size={18} />
+            Set up your coding agent
+          </h3>
+
+          <div className={styles.setupTabs}>
+            <button
+              className={`${styles.setupTab} ${setupTab === 'prompt' ? styles.active : ''}`}
+              onClick={() => setSetupTab('prompt')}
+            >
+              Any Agent
+            </button>
+            <button
+              className={`${styles.setupTab} ${setupTab === 'claude' ? styles.active : ''}`}
+              onClick={() => setSetupTab('claude')}
+            >
+              Claude Code
+            </button>
+            <button
+              className={`${styles.setupTab} ${setupTab === 'json' ? styles.active : ''}`}
+              onClick={() => setSetupTab('json')}
+            >
+              MCP Config
+            </button>
+          </div>
+
+          <div className={styles.setupContent}>
+            {setupTab === 'prompt' && (
+              <p className={styles.setupInstructions}>
+                Copy and paste this into your AI coding assistant:
+              </p>
+            )}
+            {setupTab === 'claude' && (
+              <p className={styles.setupInstructions}>
+                Run this command in your terminal:
+              </p>
+            )}
+            {setupTab === 'json' && (
+              <p className={styles.setupInstructions}>
+                Add this to your MCP configuration file:
+              </p>
+            )}
+
+            <div className={styles.setupCodeBlock}>
+              <pre>{getSetupContent()}</pre>
+              <button className={styles.copyButton} onClick={copySetupContent}>
+                {setupCopied ? <Check size={18} /> : <Copy size={18} />}
+              </button>
+            </div>
+
+            <div className={styles.setupNote}>
+              <Info size={14} />
+              <span>
+                The MCP server lets your coding agent read playbooks, record outcomes, and trigger evolution automatically.
+              </span>
+            </div>
+          </div>
         </div>
 
         <Button onClick={onClose} className={styles.doneButton}>
