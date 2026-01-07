@@ -7,8 +7,10 @@ simplified tool registration and supports SSE/stdio transports.
 Configuration is loaded from environment variables:
 - MCP_SERVER_HOST: Server bind host (default: 0.0.0.0)
 - MCP_SERVER_PORT: Server port (default: 8001)
+- ACE_API_KEY: API key for authentication (can also be passed per-tool)
 """
 
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -102,11 +104,31 @@ def get_db(ctx: Context) -> AsyncSession:
     return ctx.request_context.lifespan_context.db
 
 
+def get_api_key(api_key_param: str | None = None) -> str | None:
+    """Get API key from environment variable or parameter.
+
+    Priority:
+    1. Explicit parameter (if provided and non-empty)
+    2. ACE_API_KEY environment variable
+
+    Args:
+        api_key_param: Optional API key passed as tool parameter.
+
+    Returns:
+        API key string or None if not found.
+    """
+    if api_key_param:
+        return api_key_param
+    return os.environ.get("ACE_API_KEY")
+
+
 @mcp.tool()
 async def get_playbook(
     playbook_id: Annotated[str, "UUID of the playbook to retrieve"],
-    api_key: Annotated[str, "API key for authentication"],
     ctx: Context,
+    api_key: Annotated[
+        str | None, "API key for authentication (optional if ACE_API_KEY env var is set)"
+    ] = None,
     version: Annotated[int | None, "Specific version number to retrieve (default: current)"] = None,
     section: Annotated[str | None, "Filter to a specific section by heading"] = None,
 ) -> str:
@@ -118,7 +140,7 @@ async def get_playbook(
 
     Args:
         playbook_id: UUID of the playbook to retrieve.
-        api_key: API key for authentication.
+        api_key: API key for authentication (optional if ACE_API_KEY env var is set).
         version: Specific version number (default: current version).
         section: Filter content to section matching this heading.
 
@@ -129,8 +151,13 @@ async def get_playbook(
 
     db = get_db(ctx)
 
+    # Get API key from parameter or environment
+    resolved_api_key = get_api_key(api_key)
+    if not resolved_api_key:
+        return "Error: No API key provided. Set ACE_API_KEY environment variable or pass api_key parameter."
+
     # Authenticate
-    auth_result = await authenticate_api_key_async(db, api_key)
+    auth_result = await authenticate_api_key_async(db, resolved_api_key)
     if not auth_result:
         return "Error: Invalid or revoked API key"
 
@@ -241,8 +268,10 @@ def _extract_section(content: str, section_name: str) -> str:
 
 @mcp.tool()
 async def list_playbooks(
-    api_key: Annotated[str, "API key for authentication"],
     ctx: Context,
+    api_key: Annotated[
+        str | None, "API key for authentication (optional if ACE_API_KEY env var is set)"
+    ] = None,
 ) -> str:
     """List all playbooks for the authenticated user.
 
@@ -251,8 +280,13 @@ async def list_playbooks(
     """
     db = get_db(ctx)
 
+    # Get API key from parameter or environment
+    resolved_api_key = get_api_key(api_key)
+    if not resolved_api_key:
+        return "Error: No API key provided. Set ACE_API_KEY environment variable or pass api_key parameter."
+
     # Authenticate
-    auth_result = await authenticate_api_key_async(db, api_key)
+    auth_result = await authenticate_api_key_async(db, resolved_api_key)
     if not auth_result:
         return "Error: Invalid or revoked API key"
 
@@ -287,10 +321,12 @@ async def record_outcome(
     playbook_id: Annotated[str, "UUID of the playbook this outcome is for"],
     task_description: Annotated[str, "Description of the task that was attempted"],
     outcome: Annotated[str, "Outcome status: 'success', 'failure', or 'partial'"],
-    api_key: Annotated[str, "API key for authentication"],
+    ctx: Context,
+    api_key: Annotated[
+        str | None, "API key for authentication (optional if ACE_API_KEY env var is set)"
+    ] = None,
     notes: Annotated[str | None, "Optional notes about the outcome"] = None,
     reasoning_trace: Annotated[str | None, "Optional reasoning trace/log"] = None,
-    ctx: Context = None,
 ) -> str:
     """Record a task outcome for playbook evolution.
 
@@ -309,8 +345,13 @@ async def record_outcome(
 
     db = get_db(ctx)
 
+    # Get API key from parameter or environment
+    resolved_api_key = get_api_key(api_key)
+    if not resolved_api_key:
+        return "Error: No API key provided. Set ACE_API_KEY environment variable or pass api_key parameter."
+
     # Authenticate
-    auth_result = await authenticate_api_key_async(db, api_key)
+    auth_result = await authenticate_api_key_async(db, resolved_api_key)
     if not auth_result:
         return "Error: Invalid or revoked API key"
 
@@ -358,8 +399,10 @@ async def record_outcome(
 @mcp.tool()
 async def get_evolution_status(
     job_id: Annotated[str, "UUID of the evolution job to check"],
-    api_key: Annotated[str, "API key for authentication"],
     ctx: Context,
+    api_key: Annotated[
+        str | None, "API key for authentication (optional if ACE_API_KEY env var is set)"
+    ] = None,
 ) -> str:
     """Get the status of an evolution job.
 
@@ -370,7 +413,7 @@ async def get_evolution_status(
 
     Args:
         job_id: UUID of the evolution job to check.
-        api_key: API key for authentication.
+        api_key: API key for authentication (optional if ACE_API_KEY env var is set).
 
     Returns:
         Job status information as structured text.
@@ -379,8 +422,13 @@ async def get_evolution_status(
 
     db = get_db(ctx)
 
+    # Get API key from parameter or environment
+    resolved_api_key = get_api_key(api_key)
+    if not resolved_api_key:
+        return "Error: No API key provided. Set ACE_API_KEY environment variable or pass api_key parameter."
+
     # Authenticate
-    auth_result = await authenticate_api_key_async(db, api_key)
+    auth_result = await authenticate_api_key_async(db, resolved_api_key)
     if not auth_result:
         return "Error: Invalid or revoked API key"
 
@@ -452,8 +500,10 @@ async def get_evolution_status(
 @mcp.tool()
 async def trigger_evolution(
     playbook_id: Annotated[str, "UUID of the playbook to evolve"],
-    api_key: Annotated[str, "API key for authentication"],
     ctx: Context,
+    api_key: Annotated[
+        str | None, "API key for authentication (optional if ACE_API_KEY env var is set)"
+    ] = None,
 ) -> str:
     """Manually trigger playbook evolution.
 
@@ -465,8 +515,13 @@ async def trigger_evolution(
     """
     db = get_db(ctx)
 
+    # Get API key from parameter or environment
+    resolved_api_key = get_api_key(api_key)
+    if not resolved_api_key:
+        return "Error: No API key provided. Set ACE_API_KEY environment variable or pass api_key parameter."
+
     # Authenticate
-    auth_result = await authenticate_api_key_async(db, api_key)
+    auth_result = await authenticate_api_key_async(db, resolved_api_key)
     if not auth_result:
         return "Error: Invalid or revoked API key"
 
