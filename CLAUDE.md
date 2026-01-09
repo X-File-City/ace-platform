@@ -225,6 +225,14 @@ No untracked files remain
 
 Provide a formatted prompt for the next session with context.
 
+## Git Workflow
+
+**Always use feature branches and pull requests:**
+- Never commit directly to `main`
+- Create a feature branch for all changes: `git checkout -b feature/description` or `git checkout -b fix/description`
+- Push the feature branch and open a PR for review before merging to main
+- PRs should include a summary of changes and test plan
+
 ## Context management
 
 You are a LLM and therefore don't always have up to date knowledge in your internal knowledge. Due to this, always gather context about specific libraries, frameworks, technologies or coding patterns before generating files or writing code. This allows your output to be much more accurate and higher quality. Use the context7 MCP to do this when possible and use web search when context7 doesn't have the info you need.
