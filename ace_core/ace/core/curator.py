@@ -20,7 +20,14 @@ class Curator:
     merging, and deleting bullets based on reflection feedback.
     """
 
-    def __init__(self, api_client, api_provider, model: str, max_tokens: int = 4096):
+    def __init__(
+        self,
+        api_client,
+        api_provider,
+        model: str,
+        max_tokens: int = 4096,
+        reasoning_effort: Optional[str] = None,
+    ):
         """
         Initialize the Curator agent.
 
@@ -29,11 +36,13 @@ class Curator:
             api_provider: API provider for LLM calls
             model: Model name to use for curation
             max_tokens: Maximum tokens for curation
+            reasoning_effort: Reasoning effort level for GPT-5.x models (none, low, medium, high)
         """
         self.api_client = api_client
         self.api_provider = api_provider
         self.model = model
         self.max_tokens = max_tokens
+        self.reasoning_effort = reasoning_effort
 
     def curate(
         self,
@@ -106,6 +115,7 @@ class Curator:
             max_tokens=self.max_tokens,
             log_dir=log_dir,
             use_json_mode=use_json_mode,
+            reasoning_effort=self.reasoning_effort,
         )
 
         # Check for empty response error

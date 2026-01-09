@@ -116,6 +116,7 @@ class EvolutionService:
                 api_provider=self.settings.evolution_api_provider,
                 model=self.settings.evolution_curator_model,
                 max_tokens=self.settings.evolution_max_tokens,
+                reasoning_effort=self.settings.evolution_reasoning_effort,
             )
         return self._curator
 

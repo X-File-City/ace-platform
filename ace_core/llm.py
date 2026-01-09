@@ -27,6 +27,7 @@ def timed_llm_call(
     retries_on_timeout=1000,
     attempt=1,
     use_json_mode=False,
+    reasoning_effort=None,
 ):
     """
     Make a timed LLM call with error handling and retry logic.
@@ -81,13 +82,22 @@ def timed_llm_call(
             api_params = {
                 "model": model,
                 "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.0,
                 max_tokens_key: max_tokens,
             }
+
+            # GPT-5.x reasoning models don't support temperature parameter
+            # Only set temperature for non-reasoning models
+            is_reasoning_model = model.startswith("gpt-5") or model.startswith("o1") or model.startswith("o3")
+            if not is_reasoning_model:
+                api_params["temperature"] = 0.0
 
             # Add JSON mode if requested
             if use_json_mode:
                 api_params["response_format"] = {"type": "json_object"}
+
+            # Add reasoning effort for GPT-5.x models
+            if reasoning_effort and api_provider == "openai" and is_reasoning_model:
+                api_params["reasoning_effort"] = reasoning_effort
             call_start = time.time()
             response = active_client.chat.completions.create(**api_params)
             call_end = time.time()
