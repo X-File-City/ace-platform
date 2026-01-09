@@ -48,11 +48,13 @@ export const clearTokens = () => {
   localStorage.removeItem('refresh_token');
 };
 
-export const getAccessToken = () => accessToken;
+export const getAccessToken = () => localStorage.getItem('access_token');
 
 // Request interceptor to add auth header
 // Always read fresh from localStorage to ensure we have the latest token
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+  // Always read from localStorage to ensure we have the most current token
+  // This prevents stale token issues after page refresh or HMR
   const token = localStorage.getItem('access_token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
@@ -73,7 +75,6 @@ api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
     const originalRequest = error.config as RetryableRequest | undefined;
-
     // Always read refresh token fresh from localStorage
     const currentRefreshToken = localStorage.getItem('refresh_token');
 
@@ -131,8 +132,9 @@ export const authApi = {
   },
 
   refresh: async (): Promise<TokenResponse> => {
+    const currentRefreshToken = localStorage.getItem('refresh_token');
     const response = await api.post<TokenResponse>('/auth/refresh', {
-      refresh_token: refreshToken,
+      refresh_token: currentRefreshToken,
     });
     setTokens(response.data);
     return response.data;

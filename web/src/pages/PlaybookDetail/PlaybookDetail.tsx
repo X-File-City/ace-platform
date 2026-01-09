@@ -1,7 +1,8 @@
-import { useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { playbooksApi } from '../../utils/api';
+import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
@@ -23,18 +24,30 @@ import styles from './PlaybookDetail.module.css';
 
 type TabType = 'content' | 'versions' | 'outcomes' | 'evolutions';
 
+const validTabs: TabType[] = ['content', 'versions', 'outcomes', 'evolutions'];
+
 export function PlaybookDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<TabType>('content');
+  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+
+  // Get tab from URL, default to 'content'
+  const tabParam = searchParams.get('tab') as TabType | null;
+  const activeTab: TabType = tabParam && validTabs.includes(tabParam) ? tabParam : 'content';
+
+  // Update URL when tab changes
+  const setActiveTab = (tab: TabType) => {
+    setSearchParams(tab === 'content' ? {} : { tab }, { replace: true });
+  };
 
   const { data: playbook, isLoading, error } = useQuery({
     queryKey: ['playbook', id],
     queryFn: () => playbooksApi.get(id!),
-    enabled: !!id,
+    enabled: !!id && !isAuthLoading && isAuthenticated,
   });
 
   const deleteMutation = useMutation({
@@ -54,7 +67,7 @@ export function PlaybookDetail() {
     },
   });
 
-  if (isLoading) {
+  if (isAuthLoading || isLoading) {
     return (
       <div className={styles.container}>
         <div className={styles.loading}>
@@ -156,9 +169,9 @@ export function PlaybookDetail() {
       {/* Tab Content */}
       <div className={styles.tabContent}>
         {activeTab === 'content' && <ContentTab playbook={playbook} playbookId={id!} />}
-        {activeTab === 'versions' && <VersionsTab playbookId={id!} />}
-        {activeTab === 'outcomes' && <OutcomesTab playbookId={id!} />}
-        {activeTab === 'evolutions' && <EvolutionsTab playbookId={id!} />}
+        {activeTab === 'versions' && <VersionsTab playbookId={id!} isAuthLoading={isAuthLoading} isAuthenticated={isAuthenticated} />}
+        {activeTab === 'outcomes' && <OutcomesTab playbookId={id!} isAuthLoading={isAuthLoading} isAuthenticated={isAuthenticated} />}
+        {activeTab === 'evolutions' && <EvolutionsTab playbookId={id!} isAuthLoading={isAuthLoading} isAuthenticated={isAuthenticated} />}
       </div>
 
       {/* Delete Confirmation Modal */}
@@ -238,12 +251,13 @@ function ContentTab({
   );
 }
 
-function VersionsTab({ playbookId }: { playbookId: string }) {
+function VersionsTab({ playbookId, isAuthLoading, isAuthenticated }: { playbookId: string; isAuthLoading: boolean; isAuthenticated: boolean }) {
   const [expandedVersions, setExpandedVersions] = useState<Set<number>>(new Set());
 
   const { data, isLoading } = useQuery({
     queryKey: ['playbook-versions', playbookId],
     queryFn: () => playbooksApi.getVersions(playbookId),
+    enabled: !isAuthLoading && isAuthenticated,
   });
 
   const toggleVersion = (versionNumber: number) => {
@@ -311,10 +325,11 @@ function VersionsTab({ playbookId }: { playbookId: string }) {
   );
 }
 
-function OutcomesTab({ playbookId }: { playbookId: string }) {
+function OutcomesTab({ playbookId, isAuthLoading, isAuthenticated }: { playbookId: string; isAuthLoading: boolean; isAuthenticated: boolean }) {
   const { data, isLoading } = useQuery({
     queryKey: ['playbook-outcomes', playbookId],
     queryFn: () => playbooksApi.getOutcomes(playbookId),
+    enabled: !isAuthLoading && isAuthenticated,
   });
 
   if (isLoading) {
@@ -354,10 +369,11 @@ function OutcomesTab({ playbookId }: { playbookId: string }) {
   );
 }
 
-function EvolutionsTab({ playbookId }: { playbookId: string }) {
+function EvolutionsTab({ playbookId, isAuthLoading, isAuthenticated }: { playbookId: string; isAuthLoading: boolean; isAuthenticated: boolean }) {
   const { data, isLoading } = useQuery({
     queryKey: ['playbook-evolutions', playbookId],
     queryFn: () => playbooksApi.getEvolutions(playbookId),
+    enabled: !isAuthLoading && isAuthenticated,
   });
 
   if (isLoading) {

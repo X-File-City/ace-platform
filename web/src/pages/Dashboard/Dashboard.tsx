@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { playbooksApi } from '../../utils/api';
+import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
@@ -26,10 +27,12 @@ export function Dashboard() {
   const [mutationError, setMutationError] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
+  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['playbooks', statusFilter],
     queryFn: () => playbooksApi.list(1, 50, statusFilter || undefined),
+    enabled: !isAuthLoading && isAuthenticated,
   });
 
   const createMutation = useMutation({
@@ -103,7 +106,7 @@ export function Dashboard() {
       )}
 
       {/* Content */}
-      {isLoading ? (
+      {isAuthLoading || isLoading ? (
         <div className={styles.loading}>
           <div className={styles.spinner} />
           <span>Loading playbooks...</span>
