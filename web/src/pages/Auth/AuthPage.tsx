@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { Logo } from '../../components/Logo';
 import { OAuthButtons } from '../../components/OAuthButtons/OAuthButtons';
 import styles from './AuthPage.module.css';
 
@@ -68,22 +69,7 @@ export function AuthPage() {
         {/* Left side - Branding */}
         <div className={styles.branding}>
           <div className={styles.logoSection}>
-            <div className={styles.logo}>
-              <svg viewBox="0 0 48 48" fill="none" className={styles.logoIcon}>
-                <path
-                  d="M24 4L4 14v20l20 10 20-10V14L24 4z"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  fill="none"
-                />
-                <path
-                  d="M24 24L4 14M24 24l20-10M24 24v20"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                />
-                <circle cx="24" cy="24" r="4" fill="currentColor" />
-              </svg>
-            </div>
+            <Logo variant="card" size="xl" />
             <h1 className={styles.brandName}>ACE</h1>
             <p className={styles.tagline}>Agentic Context Engineer</p>
           </div>
