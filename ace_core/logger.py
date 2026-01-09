@@ -304,6 +304,8 @@ def log_problematic_request(
 
 def log_curator_failure(save_path, step, failure_type, curator_response, epoch, error_details=None):
     """Log curator failures to a dedicated log file for analysis"""
+    if not save_path:
+        return
     curator_failure_log_path = os.path.join(save_path, "curator_failures.txt")
 
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
