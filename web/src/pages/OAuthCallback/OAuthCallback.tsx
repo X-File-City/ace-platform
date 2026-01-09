@@ -19,13 +19,21 @@ export function OAuthCallback() {
   const navigate = useNavigate();
   const { refreshUser } = useAuth();
   const [error, setError] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [hasProcessed, setHasProcessed] = useState(false);
 
   useEffect(() => {
     const handleCallback = async () => {
+      // Prevent re-processing (can happen with React StrictMode or re-renders)
+      if (isProcessing || hasProcessed) {
+        return;
+      }
+
       // Check query params for errors (errors can use query params since they're not sensitive)
       const errorParam = searchParams.get('error');
       if (errorParam) {
         setError(errorParam);
+        setHasProcessed(true);
         return;
       }
 
@@ -35,9 +43,23 @@ export function OAuthCallback() {
       const refreshToken = fragmentParams.get('refresh_token');
 
       if (!accessToken || !refreshToken) {
-        setError('Invalid OAuth response');
+        // Only show error if we haven't processed yet and there's no fragment
+        // This prevents false errors during re-renders after fragment is cleared
+        if (window.location.hash === '' && !hasProcessed) {
+          // Check if we already have valid tokens (callback was already processed)
+          const existingToken = localStorage.getItem('access_token');
+          if (existingToken) {
+            // Tokens exist, just navigate to dashboard
+            navigate('/dashboard', { replace: true });
+            return;
+          }
+          setError('Invalid OAuth response');
+          setHasProcessed(true);
+        }
         return;
       }
+
+      setIsProcessing(true);
 
       // Clear fragment from URL immediately after reading (extra security measure)
       window.history.replaceState(null, '', window.location.pathname);
@@ -52,15 +74,19 @@ export function OAuthCallback() {
       // Refresh user data
       try {
         await refreshUser();
+        setHasProcessed(true);
         // Redirect to dashboard
         navigate('/dashboard', { replace: true });
       } catch {
         setError('Failed to load user data');
+        setHasProcessed(true);
+      } finally {
+        setIsProcessing(false);
       }
     };
 
     handleCallback();
-  }, [searchParams, navigate, refreshUser]);
+  }, [searchParams, navigate, refreshUser, isProcessing, hasProcessed]);
 
   if (error) {
     return (
