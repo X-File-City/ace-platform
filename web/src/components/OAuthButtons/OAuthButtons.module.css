@@ -1,12 +1,12 @@
 .container {
-  margin-top: 1.5rem;
+  margin-top: var(--space-lg);
 }
 
 .divider {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
+  gap: var(--space-md);
+  margin-bottom: var(--space-lg);
 }
 
 .divider::before,
@@ -14,19 +14,20 @@
   content: '';
   flex: 1;
   height: 1px;
-  background: rgba(255, 255, 255, 0.1);
+  background: linear-gradient(90deg, transparent, var(--border-default), transparent);
 }
 
 .divider span {
-  color: rgba(255, 255, 255, 0.5);
-  font-size: 0.85rem;
+  color: var(--text-tertiary);
+  font-size: 0.8125rem;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.1em;
+  font-family: var(--font-display);
 }
 
 .buttons {
   display: flex;
-  gap: 0.75rem;
+  gap: var(--space-md);
 }
 
 .oauthButton {
@@ -34,21 +35,25 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1rem;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 0.5rem;
-  color: #fff;
-  font-size: 0.9rem;
+  gap: var(--space-sm);
+  padding: 0.875rem var(--space-md);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: 0.9375rem;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all var(--transition-elegant);
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .oauthButton:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.2);
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-sm);
   transform: translateY(-1px);
 }
 

@@ -30,20 +30,13 @@ export const api = axios.create({
   },
 });
 
-// Token management
-let accessToken: string | null = localStorage.getItem('access_token');
-let refreshToken: string | null = localStorage.getItem('refresh_token');
-
+// Token management - localStorage is the source of truth
 export const setTokens = (tokens: TokenResponse) => {
-  accessToken = tokens.access_token;
-  refreshToken = tokens.refresh_token;
   localStorage.setItem('access_token', tokens.access_token);
   localStorage.setItem('refresh_token', tokens.refresh_token);
 };
 
 export const clearTokens = () => {
-  accessToken = null;
-  refreshToken = null;
   localStorage.removeItem('access_token');
   localStorage.removeItem('refresh_token');
 };
