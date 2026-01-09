@@ -98,10 +98,10 @@ def process_evolution_job(self, job_id: str) -> dict:
             # Record success metrics
             duration = time.time() - start_time
             token_total = 0
-            model = "gpt-4o"  # Default model
+            model = "gpt-5.2-thinking"  # Default model
             if job.token_totals:
                 token_total = job.token_totals.get("total_tokens", 0)
-                model = job.token_totals.get("model", "gpt-4o")
+                model = job.token_totals.get("model", "gpt-5.2-thinking")
 
             observe_evolution(
                 status="completed",

@@ -100,15 +100,15 @@ class Settings(BaseSettings):
         description="LLM provider for evolution (openai, anthropic, together)",
     )
     evolution_generator_model: str = Field(
-        default="gpt-4o",
+        default="gpt-5.2-thinking",
         description="Model for Generator agent",
     )
     evolution_reflector_model: str = Field(
-        default="gpt-4o",
+        default="gpt-5.2-thinking",
         description="Model for Reflector agent",
     )
     evolution_curator_model: str = Field(
-        default="gpt-4o",
+        default="gpt-5.2-thinking",
         description="Model for Curator agent",
     )
     evolution_max_tokens: int = Field(
