@@ -11,6 +11,7 @@ import {
   X,
 } from 'lucide-react';
 import { useState } from 'react';
+import { Logo } from '../Logo';
 import styles from './Layout.module.css';
 
 interface LayoutProps {
@@ -45,16 +46,7 @@ export function Layout({ children }: LayoutProps) {
           {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
         <div className={styles.mobileLogo}>
-          <svg viewBox="0 0 32 32" fill="none" className={styles.logoIcon}>
-            <path
-              d="M16 2L2 9v14l14 7 14-7V9L16 2z"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              fill="none"
-            />
-            <circle cx="16" cy="16" r="3" fill="currentColor" />
-          </svg>
-          <span>ACE</span>
+          <Logo variant="full" size="sm" />
         </div>
       </header>
 
@@ -63,21 +55,7 @@ export function Layout({ children }: LayoutProps) {
         <div className={styles.sidebarContent}>
           {/* Logo */}
           <div className={styles.logo}>
-            <svg viewBox="0 0 32 32" fill="none" className={styles.logoIcon}>
-              <path
-                d="M16 2L2 9v14l14 7 14-7V9L16 2z"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                fill="none"
-              />
-              <path
-                d="M16 16L2 9M16 16l14-7M16 16v14"
-                stroke="currentColor"
-                strokeWidth="1.5"
-              />
-              <circle cx="16" cy="16" r="3" fill="currentColor" />
-            </svg>
-            <span className={styles.logoText}>ACE</span>
+            <Logo variant="full" size="md" />
           </div>
 
           {/* Navigation */}
