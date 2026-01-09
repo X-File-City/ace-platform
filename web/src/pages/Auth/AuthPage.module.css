@@ -7,64 +7,80 @@
   overflow: hidden;
 }
 
-/* Animated background */
+/* Animated background - card table feel */
 .background {
   position: absolute;
   inset: 0;
   z-index: 0;
 }
 
+/* Geometric card pattern */
 .grid {
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(rgba(0, 229, 184, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 229, 184, 0.03) 1px, transparent 1px);
-  background-size: 60px 60px;
-  mask-image: radial-gradient(ellipse at center, black 20%, transparent 70%);
+    linear-gradient(rgba(26, 26, 26, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(26, 26, 26, 0.03) 1px, transparent 1px);
+  background-size: 80px 80px;
+  mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
+}
+
+/* Decorative card suit pattern */
+.grid::before {
+  content: '♠ ♥ ♦ ♣';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 20rem;
+  letter-spacing: 2rem;
+  opacity: 0.015;
+  color: var(--gold-primary);
+  white-space: nowrap;
+  font-family: serif;
 }
 
 .orb1, .orb2, .orb3 {
   position: absolute;
   border-radius: 50%;
-  filter: blur(80px);
-  opacity: 0.4;
-  animation: float 20s ease-in-out infinite;
+  filter: blur(100px);
+  opacity: 0.15;
+  animation: float 25s ease-in-out infinite;
 }
 
 .orb1 {
-  width: 600px;
-  height: 600px;
+  width: 700px;
+  height: 700px;
   background: radial-gradient(circle, var(--accent-primary) 0%, transparent 70%);
-  top: -200px;
-  left: -200px;
+  top: -250px;
+  left: -250px;
   animation-delay: 0s;
 }
 
 .orb2 {
-  width: 400px;
-  height: 400px;
-  background: radial-gradient(circle, var(--evolution-primary) 0%, transparent 70%);
-  bottom: -100px;
-  right: -100px;
-  animation-delay: -7s;
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, var(--gold-primary) 0%, transparent 70%);
+  bottom: -150px;
+  right: -150px;
+  animation-delay: -8s;
 }
 
 .orb3 {
-  width: 300px;
-  height: 300px;
+  width: 350px;
+  height: 350px;
   background: radial-gradient(circle, var(--accent-secondary) 0%, transparent 70%);
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  animation-delay: -14s;
+  animation-delay: -16s;
 }
 
 @keyframes float {
   0%, 100% { transform: translate(0, 0) scale(1); }
-  25% { transform: translate(30px, -30px) scale(1.05); }
-  50% { transform: translate(-20px, 20px) scale(0.95); }
-  75% { transform: translate(20px, 10px) scale(1.02); }
+  25% { transform: translate(40px, -40px) scale(1.05); }
+  50% { transform: translate(-30px, 30px) scale(0.95); }
+  75% { transform: translate(25px, 15px) scale(1.02); }
 }
 
 /* Content */
@@ -104,24 +120,39 @@
 }
 
 .logo {
-  width: 64px;
-  height: 64px;
+  width: 80px;
+  height: 80px;
   display: flex;
   align-items: center;
   justify-content: center;
   margin-bottom: var(--space-lg);
+  position: relative;
+}
+
+/* Card-like logo container */
+.logo::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--bg-secondary);
+  border: 2px solid var(--gold-primary);
+  border-radius: var(--radius-md);
+  opacity: 0.3;
+  transform: rotate(45deg);
 }
 
 .logoIcon {
-  width: 100%;
-  height: 100%;
+  width: 50%;
+  height: 50%;
   color: var(--accent-primary);
-  filter: drop-shadow(0 0 20px var(--accent-glow));
+  filter: drop-shadow(0 0 25px var(--accent-glow));
+  position: relative;
+  z-index: 1;
 }
 
 .brandName {
   font-family: var(--font-display);
-  font-size: 2.5rem;
+  font-size: 3rem;
   font-weight: 700;
   color: var(--text-primary);
   margin: 0;
@@ -129,16 +160,18 @@
 }
 
 .tagline {
-  font-size: 1.125rem;
+  font-family: var(--font-body);
+  font-size: 1.25rem;
   color: var(--text-secondary);
   margin: var(--space-sm) 0 0 0;
+  font-style: italic;
 }
 
 /* Features */
 .features {
   display: flex;
   flex-direction: column;
-  gap: var(--space-lg);
+  gap: var(--space-xl);
 }
 
 .feature {
@@ -148,25 +181,41 @@
 }
 
 .featureIcon {
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: var(--bg-tertiary);
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   flex-shrink: 0;
+  position: relative;
+}
+
+/* Corner accent on feature icons */
+.featureIcon::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  width: 8px;
+  height: 8px;
+  border-left: 2px solid var(--gold-primary);
+  border-top: 2px solid var(--gold-primary);
+  border-radius: 2px 0 0 0;
+  opacity: 0.5;
 }
 
 .featureIcon svg {
-  width: 20px;
-  height: 20px;
-  color: var(--accent-primary);
+  width: 22px;
+  height: 22px;
+  color: var(--gold-primary);
 }
 
 .featureText h3 {
   font-family: var(--font-display);
-  font-size: 1rem;
+  font-size: 1.125rem;
   font-weight: 600;
   color: var(--text-primary);
   margin: 0;
@@ -174,10 +223,10 @@
 }
 
 .featureText p {
-  font-size: 0.875rem;
+  font-size: 1rem;
   color: var(--text-secondary);
   margin: var(--space-xs) 0 0 0;
-  line-height: 1.5;
+  line-height: 1.6;
 }
 
 /* Form section */
@@ -189,19 +238,47 @@
 
 .formCard {
   width: 100%;
-  max-width: 420px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-default);
+  max-width: 440px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-gold);
   border-radius: var(--radius-xl);
   padding: var(--space-2xl);
   box-shadow: var(--shadow-lg);
-  animation: slideUp 0.5s ease-out;
+  animation: slideUp 0.6s var(--transition-elegant);
+  position: relative;
+}
+
+/* Premium corner accents */
+.formCard::before,
+.formCard::after {
+  content: '';
+  position: absolute;
+  width: 30px;
+  height: 30px;
+  border: 2px solid var(--gold-primary);
+  opacity: 0.4;
+}
+
+.formCard::before {
+  top: 12px;
+  left: 12px;
+  border-right: none;
+  border-bottom: none;
+  border-radius: var(--radius-sm) 0 0 0;
+}
+
+.formCard::after {
+  bottom: 12px;
+  right: 12px;
+  border-left: none;
+  border-top: none;
+  border-radius: 0 0 var(--radius-sm) 0;
 }
 
 @keyframes slideUp {
   from {
     opacity: 0;
-    transform: translateY(20px);
+    transform: translateY(30px);
   }
   to {
     opacity: 1;
@@ -216,16 +293,17 @@
 
 .formHeader h2 {
   font-family: var(--font-display);
-  font-size: 1.75rem;
+  font-size: 2rem;
   font-weight: 700;
   color: var(--text-primary);
   margin: 0;
+  letter-spacing: -0.02em;
 }
 
 .formHeader p {
   color: var(--text-secondary);
   margin: var(--space-sm) 0 0 0;
-  font-size: 0.9375rem;
+  font-size: 1rem;
 }
 
 /* Form */
@@ -241,15 +319,17 @@
   border: 1px solid var(--error);
   border-radius: var(--radius-md);
   color: var(--error);
-  font-size: 0.875rem;
+  font-size: 0.9375rem;
   text-align: center;
 }
 
 .submitButton {
   width: 100%;
   margin-top: var(--space-sm);
-  padding: 0.875rem;
+  padding: 1rem;
   font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
 }
 
 /* Form footer */
@@ -261,19 +341,22 @@
   margin-top: var(--space-lg);
   padding-top: var(--space-lg);
   border-top: 1px solid var(--border-subtle);
-  font-size: 0.875rem;
+  font-size: 0.9375rem;
   color: var(--text-secondary);
 }
 
 .toggleButton {
   background: none;
   border: none;
-  color: var(--accent-primary);
+  color: var(--gold-primary);
   cursor: pointer;
-  font-size: 0.875rem;
-  font-weight: 500;
+  font-family: var(--font-display);
+  font-size: 0.9375rem;
+  font-weight: 600;
   padding: 0;
   transition: color var(--transition-fast);
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .toggleButton:hover {
@@ -284,11 +367,31 @@
   display: block;
   text-align: center;
   margin-top: var(--space-md);
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   color: var(--text-tertiary);
   transition: color var(--transition-fast);
 }
 
 .forgotPassword:hover {
-  color: var(--accent-primary);
+  color: var(--gold-primary);
+}
+
+/* Decorative divider */
+.divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  margin: var(--space-md) 0;
+  color: var(--text-tertiary);
+  font-size: 0.8125rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border-default), transparent);
 }
