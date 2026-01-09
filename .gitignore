@@ -78,3 +78,13 @@ docker-compose.override.yml
 *.key
 credentials.json
 secrets.json
+
+# Claude Code
+.claude/
+.mcp.json
+
+# UAT test results
+uat_results_*.json
+
+# Vite cache
+web/.vite/
