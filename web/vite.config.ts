@@ -1,22 +1,20 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// Proxy configuration for API routes
-// Only proxy XHR/fetch requests, not browser navigation requests
-const apiProxyConfig = {
+// Only proxy API requests (not browser navigation requests for HTML)
+const apiProxy = {
   target: 'http://localhost:8000',
   changeOrigin: true,
-  // Bypass proxy for document requests (browser navigation/refresh)
-  // These should be handled by the SPA, not forwarded to the API
+  // Only proxy if the request accepts JSON (API calls), not HTML (browser navigation)
   bypass: (req: { headers: { accept?: string } }) => {
-    // If the request accepts HTML, it's a browser navigation - let Vite handle it
     if (req.headers.accept?.includes('text/html')) {
-      return '/index.html'
+      // Return the path to serve index.html for SPA routing
+      return '/index.html';
     }
-    // Otherwise, proxy to the API
-    return null
+    // Return undefined to proceed with proxy
+    return undefined;
   },
-}
+};
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -24,12 +22,12 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      '/auth': apiProxyConfig,
-      '/playbooks': apiProxyConfig,
-      '/usage': apiProxyConfig,
-      '/billing': apiProxyConfig,
-      '/health': apiProxyConfig,
-      '/ready': apiProxyConfig,
+      '/auth': apiProxy,
+      '/playbooks': apiProxy,
+      '/usage': apiProxy,
+      '/billing': apiProxy,
+      '/health': apiProxy,
+      '/ready': apiProxy,
     },
   },
 })

@@ -17,6 +17,7 @@ import type {
   TokenResponse,
   UsageSummary,
   User,
+  VersionCreate,
 } from '../types';
 
 // Use empty string for proxy in dev, or VITE_API_URL in production
@@ -50,6 +51,7 @@ export const clearTokens = () => {
 export const getAccessToken = () => localStorage.getItem('access_token');
 
 // Request interceptor to add auth header
+// Always read fresh from localStorage to ensure we have the latest token
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   // Always read from localStorage to ensure we have the most current token
   // This prevents stale token issues after page refresh or HMR
@@ -73,6 +75,7 @@ api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
     const originalRequest = error.config as RetryableRequest | undefined;
+    // Always read refresh token fresh from localStorage
     const currentRefreshToken = localStorage.getItem('refresh_token');
 
     // Only attempt refresh if: 401 error, have refresh token, have original request, not already retried
@@ -209,6 +212,11 @@ export const playbooksApi = {
     const response = await api.get<PlaybookVersion>(
       `/playbooks/${id}/versions/${versionNumber}`
     );
+    return response.data;
+  },
+
+  createVersion: async (id: string, data: VersionCreate): Promise<PlaybookVersion> => {
+    const response = await api.post<PlaybookVersion>(`/playbooks/${id}/versions`, data);
     return response.data;
   },
 

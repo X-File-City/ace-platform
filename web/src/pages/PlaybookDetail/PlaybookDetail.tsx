@@ -5,6 +5,7 @@ import { playbooksApi } from '../../utils/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { Input } from '../../components/ui/Input';
 import {
   ArrowLeft,
   Edit2,
@@ -18,7 +19,7 @@ import {
   ChevronRight,
   Sparkles,
 } from 'lucide-react';
-import type { PlaybookVersion, Outcome, EvolutionJob } from '../../types';
+import type { Playbook, PlaybookVersion, PlaybookUpdate, Outcome, EvolutionJob } from '../../types';
 import styles from './PlaybookDetail.module.css';
 
 type TabType = 'content' | 'versions' | 'outcomes' | 'evolutions';
@@ -32,6 +33,7 @@ export function PlaybookDetail() {
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
 
   // Get tab from URL, default to 'content'
   const tabParam = searchParams.get('tab') as TabType | null;
@@ -53,6 +55,15 @@ export function PlaybookDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['playbooks'] });
       navigate('/dashboard');
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: (data: PlaybookUpdate) => playbooksApi.update(id!, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['playbook', id] });
+      queryClient.invalidateQueries({ queryKey: ['playbooks'] });
+      setShowEditModal(false);
     },
   });
 
@@ -107,7 +118,11 @@ export function PlaybookDetail() {
         </div>
 
         <div className={styles.headerActions}>
-          <Button variant="secondary" icon={<Edit2 size={16} />}>
+          <Button
+            variant="secondary"
+            icon={<Edit2 size={16} />}
+            onClick={() => setShowEditModal(true)}
+          >
             Edit
           </Button>
           <Button
@@ -153,7 +168,7 @@ export function PlaybookDetail() {
 
       {/* Tab Content */}
       <div className={styles.tabContent}>
-        {activeTab === 'content' && <ContentTab playbook={playbook} />}
+        {activeTab === 'content' && <ContentTab playbook={playbook} playbookId={id!} />}
         {activeTab === 'versions' && <VersionsTab playbookId={id!} isAuthLoading={isAuthLoading} isAuthenticated={isAuthenticated} />}
         {activeTab === 'outcomes' && <OutcomesTab playbookId={id!} isAuthLoading={isAuthLoading} isAuthenticated={isAuthenticated} />}
         {activeTab === 'evolutions' && <EvolutionsTab playbookId={id!} isAuthLoading={isAuthLoading} isAuthenticated={isAuthenticated} />}
@@ -182,15 +197,34 @@ export function PlaybookDetail() {
           </div>
         </div>
       )}
+
+      {/* Edit Playbook Modal */}
+      {showEditModal && (
+        <EditPlaybookModal
+          playbook={playbook}
+          onClose={() => setShowEditModal(false)}
+          onSave={(data) => updateMutation.mutate(data)}
+          isLoading={updateMutation.isPending}
+        />
+      )}
     </div>
   );
 }
 
-function ContentTab({ playbook }: { playbook: { current_version: PlaybookVersion | null } }) {
+function ContentTab({
+  playbook,
+  playbookId,
+}: {
+  playbook: { current_version: PlaybookVersion | null };
+  playbookId: string;
+}) {
   if (!playbook.current_version) {
     return (
       <div className={styles.emptyContent}>
-        <p>No content yet. Add outcomes to start evolving this playbook.</p>
+        <p>No content yet.</p>
+        <Link to={`/playbooks/${playbookId}/edit`}>
+          <Button icon={<Edit2 size={16} />}>Add Content</Button>
+        </Link>
       </div>
     );
   }
@@ -204,6 +238,11 @@ function ContentTab({ playbook }: { playbook: { current_version: PlaybookVersion
         <span className={styles.bulletCount}>
           {playbook.current_version.bullet_count} bullets
         </span>
+        <Link to={`/playbooks/${playbookId}/edit`} className={styles.editContentLink}>
+          <Button variant="secondary" size="sm" icon={<Edit2 size={14} />}>
+            Edit Content
+          </Button>
+        </Link>
       </div>
       <div className={styles.markdownContent}>
         <pre>{playbook.current_version.content}</pre>
@@ -377,6 +416,70 @@ function EvolutionsTab({ playbookId, isAuthLoading, isAuthenticated }: { playboo
           </div>
         </Card>
       ))}
+    </div>
+  );
+}
+
+interface EditModalProps {
+  playbook: Playbook;
+  onClose: () => void;
+  onSave: (data: PlaybookUpdate) => void;
+  isLoading: boolean;
+}
+
+function EditPlaybookModal({ playbook, onClose, onSave, isLoading }: EditModalProps) {
+  const [name, setName] = useState(playbook.name);
+  const [description, setDescription] = useState(playbook.description || '');
+  const [status, setStatus] = useState<'active' | 'paused' | 'archived'>(playbook.status);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSave({
+      name: name !== playbook.name ? name : undefined,
+      description: description !== (playbook.description || '') ? description : undefined,
+      status: status !== playbook.status ? status : undefined,
+    });
+  };
+
+  return (
+    <div className={styles.modalOverlay} onClick={onClose}>
+      <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+        <h2>Edit Playbook</h2>
+        <form onSubmit={handleSubmit} className={styles.editForm}>
+          <Input
+            label="Name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+          />
+          <Input
+            label="Description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="A brief description..."
+          />
+          <div className={styles.selectWrapper}>
+            <label className={styles.selectLabel}>Status</label>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value as 'active' | 'paused' | 'archived')}
+              className={styles.select}
+            >
+              <option value="active">Active</option>
+              <option value="paused">Paused</option>
+              <option value="archived">Archived</option>
+            </select>
+          </div>
+          <div className={styles.modalActions}>
+            <Button variant="ghost" type="button" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" isLoading={isLoading}>
+              Save Changes
+            </Button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
