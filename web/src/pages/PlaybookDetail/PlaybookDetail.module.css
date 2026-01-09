@@ -674,6 +674,19 @@
   gap: var(--space-sm);
 }
 
+.modalError {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--radius-md);
+  color: #ef4444;
+  font-size: 0.875rem;
+  margin-bottom: var(--space-md);
+}
+
 /* Edit Form */
 .editForm {
   display: flex;

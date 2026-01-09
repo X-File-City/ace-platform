@@ -30,9 +30,10 @@ export function Dashboard() {
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['playbooks', statusFilter],
+    queryKey: ['playbooks', statusFilter, isAuthenticated],
     queryFn: () => playbooksApi.list(1, 50, statusFilter || undefined),
     enabled: !isAuthLoading && isAuthenticated,
+    staleTime: 0, // Always consider data stale to ensure fresh fetches
   });
 
   const createMutation = useMutation({

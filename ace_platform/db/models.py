@@ -46,6 +46,7 @@ class PlaybookStatus(str, enum.Enum):
     """Status of a playbook."""
 
     ACTIVE = "active"
+    PAUSED = "paused"
     ARCHIVED = "archived"
 
 

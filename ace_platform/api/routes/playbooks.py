@@ -500,7 +500,10 @@ async def update_playbook(
         playbook.status = data.status
 
     await db.commit()
-    await db.refresh(playbook, ["current_version"])
+    await db.refresh(playbook)
+    # Eagerly load the current_version relationship to avoid lazy loading issues
+    if playbook.current_version_id:
+        await db.refresh(playbook, ["current_version"])
 
     return PlaybookResponse(
         id=playbook.id,

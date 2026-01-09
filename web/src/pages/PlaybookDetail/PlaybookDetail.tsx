@@ -35,6 +35,7 @@ export function PlaybookDetail() {
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
 
   // Get tab from URL, default to 'content'
   const tabParam = searchParams.get('tab') as TabType | null;
@@ -65,6 +66,10 @@ export function PlaybookDetail() {
       queryClient.invalidateQueries({ queryKey: ['playbook', id] });
       queryClient.invalidateQueries({ queryKey: ['playbooks'] });
       setShowEditModal(false);
+      setUpdateError(null);
+    },
+    onError: () => {
+      setUpdateError('Failed to update playbook. Please try again.');
     },
   });
 
@@ -203,9 +208,13 @@ export function PlaybookDetail() {
       {showEditModal && (
         <EditPlaybookModal
           playbook={playbook}
-          onClose={() => setShowEditModal(false)}
+          onClose={() => {
+            setShowEditModal(false);
+            setUpdateError(null);
+          }}
           onSave={(data) => updateMutation.mutate(data)}
           isLoading={updateMutation.isPending}
+          error={updateError}
         />
       )}
     </div>
@@ -426,9 +435,10 @@ interface EditModalProps {
   onClose: () => void;
   onSave: (data: PlaybookUpdate) => void;
   isLoading: boolean;
+  error: string | null;
 }
 
-function EditPlaybookModal({ playbook, onClose, onSave, isLoading }: EditModalProps) {
+function EditPlaybookModal({ playbook, onClose, onSave, isLoading, error }: EditModalProps) {
   const [name, setName] = useState(playbook.name);
   const [description, setDescription] = useState(playbook.description || '');
   const [status, setStatus] = useState<'active' | 'paused' | 'archived'>(playbook.status);
@@ -446,6 +456,12 @@ function EditPlaybookModal({ playbook, onClose, onSave, isLoading }: EditModalPr
     <div className={styles.modalOverlay} onClick={onClose}>
       <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
         <h2>Edit Playbook</h2>
+        {error && (
+          <div className={styles.modalError}>
+            <AlertCircle size={16} />
+            <span>{error}</span>
+          </div>
+        )}
         <form onSubmit={handleSubmit} className={styles.editForm}>
           <Input
             label="Name"
