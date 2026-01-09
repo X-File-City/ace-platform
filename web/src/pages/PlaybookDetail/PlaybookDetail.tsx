@@ -6,6 +6,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
+import { PlaybookRenderer } from '../../components/PlaybookRenderer';
 import {
   ArrowLeft,
   Edit2,
@@ -245,7 +246,7 @@ function ContentTab({
         </Link>
       </div>
       <div className={styles.markdownContent}>
-        <pre>{playbook.current_version.content}</pre>
+        <PlaybookRenderer content={playbook.current_version.content} />
       </div>
     </Card>
   );
@@ -316,7 +317,7 @@ function VersionsTab({ playbookId, isAuthLoading, isAuthenticated }: { playbookI
           </div>
           {expandedVersions.has(version.version_number) && (
             <div className={styles.versionContent}>
-              <pre>{version.content}</pre>
+              <PlaybookRenderer content={version.content} />
             </div>
           )}
         </div>

@@ -13,6 +13,7 @@ This module provides REST API endpoints for playbook management:
 - GET /playbooks/{id}/evolutions - List evolution history for a playbook
 """
 
+import re
 from datetime import datetime
 from typing import Annotated
 from uuid import UUID
@@ -372,9 +373,9 @@ async def create_playbook(
     # Create initial version if content provided
     version = None
     if data.initial_content:
-        bullet_count = data.initial_content.count("\n- ") + data.initial_content.count("\n* ")
-        if data.initial_content.startswith("- ") or data.initial_content.startswith("* "):
-            bullet_count += 1
+        # Count ACE-format bullets: [id] helpful=X harmful=Y :: content
+        ace_bullet_pattern = r"\[[^\]]+\]\s*helpful=\d+\s*harmful=\d+\s*::"
+        bullet_count = len(re.findall(ace_bullet_pattern, data.initial_content))
 
         version = PlaybookVersion(
             playbook_id=playbook.id,
@@ -703,9 +704,9 @@ async def create_version(
         )
 
     # Calculate bullet count (done once, outside retry loop)
-    bullet_count = data.content.count("\n- ") + data.content.count("\n* ")
-    if data.content.startswith("- ") or data.content.startswith("* "):
-        bullet_count += 1
+    # Count ACE-format bullets: [id] helpful=X harmful=Y :: content
+    ace_bullet_pattern = r"\[[^\]]+\]\s*helpful=\d+\s*harmful=\d+\s*::"
+    bullet_count = len(re.findall(ace_bullet_pattern, data.content))
 
     # Retry loop to handle race conditions on version_number
     max_retries = 3

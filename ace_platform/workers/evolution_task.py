@@ -7,6 +7,7 @@ This task handles background playbook evolution:
 4. Updates job and outcome records
 """
 
+import re
 import time
 from datetime import UTC, datetime
 from uuid import UUID
@@ -208,13 +209,9 @@ def _execute_evolution(db, job: EvolutionJob) -> dict:
     # Create new version if content changed
     new_version = None
     if evolution_result.has_changes:
-        # Count bullets
-        bullet_count = evolution_result.evolved_playbook.count("\n- ")
-        bullet_count += evolution_result.evolved_playbook.count("\n* ")
-        if evolution_result.evolved_playbook.startswith(
-            "- "
-        ) or evolution_result.evolved_playbook.startswith("* "):
-            bullet_count += 1
+        # Count ACE-format bullets: [id] helpful=X harmful=Y :: content
+        ace_bullet_pattern = r"\[[^\]]+\]\s*helpful=\d+\s*harmful=\d+\s*::"
+        bullet_count = len(re.findall(ace_bullet_pattern, evolution_result.evolved_playbook))
 
         new_version = PlaybookVersion(
             playbook_id=job.playbook_id,
