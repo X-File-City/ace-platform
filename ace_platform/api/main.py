@@ -669,7 +669,7 @@ def _register_routes(app: FastAPI) -> None:
                 ACE automatically captures what works and evolves your playbooks.
             </p>
             <div class="cta-buttons">
-                <a href="#" class="btn btn-primary">Get Started</a>
+                <a href="/login" class="btn btn-primary">Get Started</a>
                 <a href="#features" class="btn btn-secondary">Learn More</a>
             </div>
         </section>
