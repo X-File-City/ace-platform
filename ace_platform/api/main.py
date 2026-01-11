@@ -16,7 +16,7 @@ import sentry_sdk
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 
 from ace_platform.config import get_settings
@@ -409,6 +409,294 @@ def _register_routes(app: FastAPI) -> None:
             content=generate_latest(),
             media_type=CONTENT_TYPE_LATEST,
         )
+
+    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
+    async def landing_page():
+        """Serve the landing page."""
+        return """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ACE Platform - Self-Improving AI Playbooks</title>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800&family=Cormorant+Garamond:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #fdfcfa;
+            --bg-secondary: #f5f3ee;
+            --bg-card: #ffffff;
+            --ink-primary: #1a1a1a;
+            --text-secondary: #4a4a4a;
+            --text-tertiary: #7a7a7a;
+            --accent-primary: #c41e3a;
+            --accent-secondary: #a31830;
+            --gold-primary: #b8860b;
+            --border-default: rgba(0, 0, 0, 0.12);
+            --border-gold: rgba(184, 134, 11, 0.4);
+            --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+            --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.1), 0 4px 8px rgba(0, 0, 0, 0.06);
+            --font-display: 'Playfair Display', Georgia, serif;
+            --font-body: 'Cormorant Garamond', Garamond, serif;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { font-size: 16px; -webkit-font-smoothing: antialiased; }
+        body {
+            font-family: var(--font-body);
+            font-size: 1.0625rem;
+            line-height: 1.65;
+            color: var(--ink-primary);
+            background: var(--bg-primary);
+            min-height: 100vh;
+        }
+        /* Subtle pattern overlay */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 0L30 60M0 30L60 30M0 0L60 60M60 0L0 60' stroke='%23000000' stroke-width='0.2' fill='none' opacity='0.02'/%3E%3C/svg%3E");
+            opacity: 0.5;
+            pointer-events: none;
+            z-index: -1;
+        }
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.5rem 0;
+            border-bottom: 1px solid var(--border-default);
+            margin-bottom: 2rem;
+        }
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        .logo-text {
+            font-family: var(--font-display);
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--ink-primary);
+            letter-spacing: -0.02em;
+        }
+        nav a {
+            font-family: var(--font-display);
+            color: var(--text-secondary);
+            text-decoration: none;
+            margin-left: 2rem;
+            font-size: 0.9375rem;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+        nav a:hover { color: var(--accent-primary); }
+        .hero {
+            text-align: center;
+            padding: 5rem 0;
+        }
+        h1 {
+            font-family: var(--font-display);
+            font-size: 3.25rem;
+            font-weight: 700;
+            color: var(--ink-primary);
+            margin-bottom: 1.5rem;
+            letter-spacing: -0.02em;
+            line-height: 1.15;
+        }
+        .subtitle {
+            font-family: var(--font-body);
+            font-size: 1.375rem;
+            color: var(--text-secondary);
+            margin-bottom: 2.5rem;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            line-height: 1.6;
+        }
+        .cta-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .btn {
+            font-family: var(--font-display);
+            padding: 0.875rem 2rem;
+            border-radius: 8px;
+            font-size: 0.9375rem;
+            font-weight: 600;
+            text-decoration: none;
+            letter-spacing: 0.02em;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 1px solid transparent;
+        }
+        .btn-primary {
+            background: var(--accent-primary);
+            color: #fff;
+            box-shadow: 0 2px 8px rgba(196, 30, 58, 0.2);
+        }
+        .btn-primary:hover {
+            background: var(--accent-secondary);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 16px rgba(196, 30, 58, 0.3);
+        }
+        .btn-secondary {
+            background: transparent;
+            color: var(--ink-primary);
+            border-color: var(--border-default);
+        }
+        .btn-secondary:hover {
+            border-color: var(--gold-primary);
+            color: var(--gold-primary);
+        }
+        .divider {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            color: var(--text-tertiary);
+            margin: 4rem 0;
+        }
+        .divider::before, .divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--border-default), transparent);
+        }
+        .divider span { font-size: 1.25rem; }
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            padding: 2rem 0 4rem;
+        }
+        .feature {
+            background: var(--bg-card);
+            padding: 2rem;
+            border-radius: 10px;
+            border: 1px solid var(--border-default);
+            box-shadow: var(--shadow-card);
+            position: relative;
+            transition: all 0.3s ease;
+        }
+        .feature:hover {
+            box-shadow: var(--shadow-lg);
+            border-color: var(--border-gold);
+        }
+        /* Card corner decorations */
+        .feature::before, .feature::after {
+            content: '';
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            border: 2px solid var(--ink-primary);
+            opacity: 0.1;
+            transition: opacity 0.3s;
+        }
+        .feature::before {
+            top: 8px;
+            left: 8px;
+            border-right: none;
+            border-bottom: none;
+        }
+        .feature::after {
+            bottom: 8px;
+            right: 8px;
+            border-left: none;
+            border-top: none;
+        }
+        .feature:hover::before, .feature:hover::after { opacity: 0.25; }
+        .feature h3 {
+            font-family: var(--font-display);
+            color: var(--accent-primary);
+            margin-bottom: 0.75rem;
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+        .feature p {
+            color: var(--text-secondary);
+            line-height: 1.7;
+        }
+        footer {
+            text-align: center;
+            padding: 3rem 0;
+            border-top: 1px solid var(--border-default);
+            color: var(--text-tertiary);
+            font-size: 0.9375rem;
+        }
+        /* Ace card logo SVG */
+        .ace-card {
+            width: 36px;
+            height: 50px;
+        }
+        @media (max-width: 768px) {
+            h1 { font-size: 2.25rem; }
+            .subtitle { font-size: 1.125rem; }
+            .hero { padding: 3rem 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">
+                <svg class="ace-card" viewBox="0 0 40 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="1" y="1" width="38" height="54" rx="4" fill="#ffffff" stroke="rgba(184,134,11,0.4)" stroke-width="1.5"/>
+                    <rect x="4" y="4" width="32" height="48" rx="2" fill="none" stroke="#b8860b" stroke-width="0.5" opacity="0.3"/>
+                    <text x="7" y="14" fill="#1a1a1a" font-size="9" font-family="Playfair Display, serif" font-weight="700">A</text>
+                    <g transform="translate(20, 28)">
+                        <path d="M0 -12C0 -12 -8 -3 -8 3C-8 6 -6 8.5 -3 8.5C-1.5 8.5 -0.5 7.8 0 7C0.5 7.8 1.5 8.5 3 8.5C6 8.5 8 6 8 3C8 -3 0 -12 0 -12Z" fill="#1a1a1a"/>
+                        <path d="M-2.5 7L-3.5 12H3.5L2.5 7" fill="#1a1a1a"/>
+                    </g>
+                    <path d="M4 8L4 4L8 4" stroke="#b8860b" stroke-width="1" fill="none" opacity="0.6"/>
+                    <path d="M36 8L36 4L32 4" stroke="#b8860b" stroke-width="1" fill="none" opacity="0.6"/>
+                    <path d="M4 48L4 52L8 52" stroke="#b8860b" stroke-width="1" fill="none" opacity="0.6"/>
+                    <path d="M36 48L36 52L32 52" stroke="#b8860b" stroke-width="1" fill="none" opacity="0.6"/>
+                </svg>
+                <span class="logo-text">ACE</span>
+            </div>
+            <nav>
+                <a href="/health">Status</a>
+            </nav>
+        </header>
+
+        <section class="hero">
+            <h1>AI Playbooks That<br>Improve Themselves</h1>
+            <p class="subtitle">
+                Create context for your AI agents that gets smarter the more you use it.
+                ACE automatically captures what works and evolves your playbooks.
+            </p>
+            <div class="cta-buttons">
+                <a href="#" class="btn btn-primary">Get Started</a>
+                <a href="#features" class="btn btn-secondary">Learn More</a>
+            </div>
+        </section>
+
+        <div class="divider"><span>&#9824;</span></div>
+
+        <section class="features" id="features">
+            <div class="feature">
+                <h3>Self-Improving Context</h3>
+                <p>Your playbooks evolve based on real outcomes. The more you use them, the better they get at guiding your AI agents.</p>
+            </div>
+            <div class="feature">
+                <h3>MCP Integration</h3>
+                <p>Connect to any AI assistant that supports the Model Context Protocol. Your playbooks become living context that travels with you.</p>
+            </div>
+            <div class="feature">
+                <h3>Outcome Tracking</h3>
+                <p>ACE watches what works and what doesn't, automatically incorporating successful patterns into your playbooks.</p>
+            </div>
+        </section>
+
+        <footer>
+            &copy; 2026 ACE Platform. Built for developers who want their AI to get smarter.
+        </footer>
+    </div>
+</body>
+</html>"""
 
 
 # Create the application instance

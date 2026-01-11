@@ -202,6 +202,14 @@ class Settings(BaseSettings):
         description="Sentry profiling sample rate (0.0 to 1.0)",
     )
 
+    @field_validator("database_url", mode="after")
+    @classmethod
+    def normalize_database_url(cls, v: str) -> str:
+        """Normalize postgres:// to postgresql:// for SQLAlchemy compatibility."""
+        if v.startswith("postgres://"):
+            return v.replace("postgres://", "postgresql://", 1)
+        return v
+
     @field_validator("database_url_async", mode="before")
     @classmethod
     def derive_async_url(cls, v: str | None, info) -> str:
@@ -211,10 +219,32 @@ class Settings(BaseSettings):
         # Get the sync URL from the data being validated
         sync_url = info.data.get("database_url", "")
         if sync_url.startswith("postgresql://"):
-            return sync_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            async_url = sync_url.replace("postgresql://", "postgresql+asyncpg://", 1)
         elif sync_url.startswith("postgres://"):
-            return sync_url.replace("postgres://", "postgresql+asyncpg://", 1)
-        return sync_url
+            async_url = sync_url.replace("postgres://", "postgresql+asyncpg://", 1)
+        else:
+            return sync_url
+        # asyncpg doesn't accept sslmode parameter - convert it to ssl parameter
+        # Fly.io sets sslmode=disable for internal connections
+        ssl_disabled = "sslmode=disable" in async_url
+        if "?sslmode=" in async_url:
+            async_url = async_url.split("?sslmode=")[0]
+        elif "&sslmode=" in async_url:
+            # Handle case where sslmode is not the first parameter
+            parts = async_url.split("&sslmode=")
+            if len(parts) == 2:
+                remaining = parts[1].split("&", 1)
+                if len(remaining) > 1:
+                    async_url = parts[0] + "&" + remaining[1]
+                else:
+                    async_url = parts[0]
+        # If SSL was disabled, explicitly disable it for asyncpg
+        if ssl_disabled:
+            if "?" in async_url:
+                async_url += "&ssl=disable"
+            else:
+                async_url += "?ssl=disable"
+        return async_url
 
     @field_validator("stripe_secret_key", "stripe_webhook_secret", mode="after")
     @classmethod
