@@ -14,10 +14,12 @@ import pytest
 
 from ace_platform.core.limits import SubscriptionTier
 from ace_platform.core.stripe_config import (
-    PROFESSIONAL_MONTHLY_PRICE_CENTS,
-    PROFESSIONAL_YEARLY_PRICE_CENTS,
+    PRO_MONTHLY_PRICE_CENTS,
+    PRO_YEARLY_PRICE_CENTS,
     STARTER_MONTHLY_PRICE_CENTS,
     STARTER_YEARLY_PRICE_CENTS,
+    ULTRA_MONTHLY_PRICE_CENTS,
+    ULTRA_YEARLY_PRICE_CENTS,
     BillingInterval,
     PriceConfig,
     ProductConfig,
@@ -61,8 +63,8 @@ class TestPriceConfig:
 
     def test_amount_decimal(self):
         """Test amount_decimal property conversion."""
-        price = PriceConfig(price_id="price_test", unit_amount=1000)
-        assert price.amount_decimal == Decimal("10.00")
+        price = PriceConfig(price_id="price_test", unit_amount=900)
+        assert price.amount_decimal == Decimal("9.00")
 
         price_fractional = PriceConfig(price_id="price_test", unit_amount=999)
         assert price_fractional.amount_decimal == Decimal("9.99")
@@ -84,7 +86,7 @@ class TestProductConfig:
             name="Test Product",
             description="A test product",
             tier=SubscriptionTier.STARTER,
-            monthly_price=PriceConfig(price_id="price_monthly", unit_amount=1000),
+            monthly_price=PriceConfig(price_id="price_monthly", unit_amount=900),
         )
         assert product.product_id == "prod_test"
         assert product.name == "Test Product"
@@ -98,11 +100,11 @@ class TestProductConfig:
             product_id="prod_full",
             name="Full Product",
             description="A fully configured product",
-            tier=SubscriptionTier.PROFESSIONAL,
-            monthly_price=PriceConfig(price_id="price_monthly", unit_amount=10000),
+            tier=SubscriptionTier.PRO,
+            monthly_price=PriceConfig(price_id="price_monthly", unit_amount=2900),
             yearly_price=PriceConfig(
                 price_id="price_yearly",
-                unit_amount=100000,
+                unit_amount=29000,
                 interval=BillingInterval.YEARLY,
             ),
             features=("Feature 1", "Feature 2", "Feature 3"),
@@ -117,7 +119,7 @@ class TestProductConfig:
             name="Test",
             description="Test",
             tier=SubscriptionTier.STARTER,
-            monthly_price=PriceConfig(price_id="price_test", unit_amount=1000),
+            monthly_price=PriceConfig(price_id="price_test", unit_amount=900),
         )
         with pytest.raises(AttributeError):
             product.name = "New Name"
@@ -138,33 +140,41 @@ class TestBillingInterval:
 
 
 class TestPricingConstants:
-    """Tests for pricing constants."""
+    """Tests for pricing constants per BILLING_DECISIONS.md."""
 
     def test_starter_pricing(self):
-        """Test Starter tier pricing constants."""
-        assert STARTER_MONTHLY_PRICE_CENTS == 1000  # $10/month
-        assert STARTER_YEARLY_PRICE_CENTS == 10000  # $100/year
+        """Test Starter tier pricing constants ($9/month)."""
+        assert STARTER_MONTHLY_PRICE_CENTS == 900  # $9/month
+        assert STARTER_YEARLY_PRICE_CENTS == 9000  # $90/year
 
-    def test_professional_pricing(self):
-        """Test Professional tier pricing constants."""
-        assert PROFESSIONAL_MONTHLY_PRICE_CENTS == 10000  # $100/month
-        assert PROFESSIONAL_YEARLY_PRICE_CENTS == 100000  # $1000/year
+    def test_pro_pricing(self):
+        """Test Pro tier pricing constants ($29/month)."""
+        assert PRO_MONTHLY_PRICE_CENTS == 2900  # $29/month
+        assert PRO_YEARLY_PRICE_CENTS == 29000  # $290/year
+
+    def test_ultra_pricing(self):
+        """Test Ultra tier pricing constants ($79/month)."""
+        assert ULTRA_MONTHLY_PRICE_CENTS == 7900  # $79/month
+        assert ULTRA_YEARLY_PRICE_CENTS == 79000  # $790/year
 
     def test_yearly_discount(self):
-        """Test that yearly pricing includes a discount."""
+        """Test that yearly pricing includes a discount (2 months free)."""
         # Yearly should be equivalent to 10 months (2 months free)
         starter_yearly_equivalent = STARTER_MONTHLY_PRICE_CENTS * 12
         assert STARTER_YEARLY_PRICE_CENTS < starter_yearly_equivalent
 
-        professional_yearly_equivalent = PROFESSIONAL_MONTHLY_PRICE_CENTS * 12
-        assert PROFESSIONAL_YEARLY_PRICE_CENTS < professional_yearly_equivalent
+        pro_yearly_equivalent = PRO_MONTHLY_PRICE_CENTS * 12
+        assert PRO_YEARLY_PRICE_CENTS < pro_yearly_equivalent
+
+        ultra_yearly_equivalent = ULTRA_MONTHLY_PRICE_CENTS * 12
+        assert ULTRA_YEARLY_PRICE_CENTS < ultra_yearly_equivalent
 
 
 class TestGetProductConfig:
     """Tests for get_product_config function."""
 
     def test_free_tier_returns_none(self):
-        """Test FREE tier has no Stripe product."""
+        """Test FREE tier has no Stripe product (internal use only)."""
         config = get_product_config(SubscriptionTier.FREE)
         assert config is None
 
@@ -187,23 +197,42 @@ class TestGetProductConfig:
         assert config.monthly_price.unit_amount == STARTER_MONTHLY_PRICE_CENTS
         assert config.yearly_price is not None
         assert config.yearly_price.price_id == "price_starter_yearly"
+        assert "100 evolution runs/month" in config.features
 
     @patch("ace_platform.core.stripe_config.get_stripe_product_settings")
-    def test_professional_tier_config(self, mock_settings):
-        """Test PROFESSIONAL tier returns correct config."""
+    def test_pro_tier_config(self, mock_settings):
+        """Test PRO tier returns correct config."""
         mock_settings.return_value = StripeProductSettings(
-            stripe_professional_product_id="prod_pro",
-            stripe_professional_monthly_price_id="price_pro_monthly",
+            stripe_pro_product_id="prod_pro",
+            stripe_pro_monthly_price_id="price_pro_monthly",
         )
 
-        config = get_product_config(SubscriptionTier.PROFESSIONAL)
+        config = get_product_config(SubscriptionTier.PRO)
 
         assert config is not None
         assert config.product_id == "prod_pro"
-        assert config.name == "ACE Professional"
-        assert config.tier == SubscriptionTier.PROFESSIONAL
-        assert config.monthly_price.unit_amount == PROFESSIONAL_MONTHLY_PRICE_CENTS
+        assert config.name == "ACE Pro"
+        assert config.tier == SubscriptionTier.PRO
+        assert config.monthly_price.unit_amount == PRO_MONTHLY_PRICE_CENTS
+        assert "500 evolution runs/month" in config.features
         assert "Priority support" in config.features
+
+    @patch("ace_platform.core.stripe_config.get_stripe_product_settings")
+    def test_ultra_tier_config(self, mock_settings):
+        """Test ULTRA tier returns correct config."""
+        mock_settings.return_value = StripeProductSettings(
+            stripe_ultra_product_id="prod_ultra",
+            stripe_ultra_monthly_price_id="price_ultra_monthly",
+        )
+
+        config = get_product_config(SubscriptionTier.ULTRA)
+
+        assert config is not None
+        assert config.product_id == "prod_ultra"
+        assert config.name == "ACE Ultra"
+        assert config.tier == SubscriptionTier.ULTRA
+        assert config.monthly_price.unit_amount == ULTRA_MONTHLY_PRICE_CENTS
+        assert "2,000 evolution runs/month" in config.features
 
     @patch("ace_platform.core.stripe_config.get_stripe_product_settings")
     def test_enterprise_tier_config(self, mock_settings):
@@ -220,7 +249,7 @@ class TestGetProductConfig:
         assert config.tier == SubscriptionTier.ENTERPRISE
         # Enterprise has custom pricing (empty price_id)
         assert config.monthly_price.price_id == ""
-        assert "Unlimited requests" in config.features
+        assert "Unlimited evolution runs" in config.features
 
 
 class TestGetPriceIdForTier:
@@ -277,15 +306,15 @@ class TestTierLookup:
         mock_settings.return_value = StripeProductSettings(
             stripe_starter_product_id="prod_starter",
             stripe_starter_monthly_price_id="price_starter_monthly",
-            stripe_professional_product_id="prod_pro",
-            stripe_professional_monthly_price_id="price_pro_monthly",
+            stripe_pro_product_id="prod_pro",
+            stripe_pro_monthly_price_id="price_pro_monthly",
         )
 
         tier = get_tier_from_price_id("price_starter_monthly")
         assert tier == SubscriptionTier.STARTER
 
         tier = get_tier_from_price_id("price_pro_monthly")
-        assert tier == SubscriptionTier.PROFESSIONAL
+        assert tier == SubscriptionTier.PRO
 
     @patch("ace_platform.core.stripe_config.get_stripe_product_settings")
     def test_get_tier_from_price_id_yearly(self, mock_settings):
@@ -313,15 +342,15 @@ class TestTierLookup:
         mock_settings.return_value = StripeProductSettings(
             stripe_starter_product_id="prod_starter",
             stripe_starter_monthly_price_id="price_starter",
-            stripe_professional_product_id="prod_pro",
-            stripe_professional_monthly_price_id="price_pro",
+            stripe_pro_product_id="prod_pro",
+            stripe_pro_monthly_price_id="price_pro",
         )
 
         tier = get_tier_from_product_id("prod_starter")
         assert tier == SubscriptionTier.STARTER
 
         tier = get_tier_from_product_id("prod_pro")
-        assert tier == SubscriptionTier.PROFESSIONAL
+        assert tier == SubscriptionTier.PRO
 
     @patch("ace_platform.core.stripe_config.get_stripe_product_settings")
     def test_get_tier_from_product_id_unknown(self, mock_settings):
@@ -372,19 +401,22 @@ class TestGetAllProducts:
         mock_settings.return_value = StripeProductSettings(
             stripe_starter_product_id="prod_starter",
             stripe_starter_monthly_price_id="price_starter",
-            stripe_professional_product_id="prod_pro",
-            stripe_professional_monthly_price_id="price_pro",
+            stripe_pro_product_id="prod_pro",
+            stripe_pro_monthly_price_id="price_pro",
+            stripe_ultra_product_id="prod_ultra",
+            stripe_ultra_monthly_price_id="price_ultra",
             stripe_enterprise_product_id="prod_enterprise",
         )
 
         products = get_all_products()
 
-        assert len(products) == 3
+        assert len(products) == 4
         tiers = [p.tier for p in products]
         assert SubscriptionTier.STARTER in tiers
-        assert SubscriptionTier.PROFESSIONAL in tiers
+        assert SubscriptionTier.PRO in tiers
+        assert SubscriptionTier.ULTRA in tiers
         assert SubscriptionTier.ENTERPRISE in tiers
-        # FREE tier is not included
+        # FREE tier is not included (internal use only)
         assert SubscriptionTier.FREE not in tiers
 
     @patch("ace_platform.core.stripe_config.get_stripe_product_settings")
@@ -395,4 +427,4 @@ class TestGetAllProducts:
         products = get_all_products()
 
         # Still returns configs, just with empty IDs
-        assert len(products) == 3
+        assert len(products) == 4

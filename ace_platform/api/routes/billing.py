@@ -231,7 +231,8 @@ async def subscribe(
     # For paid tiers, create a Stripe checkout session
     if request.tier in [
         SubscriptionTier.STARTER,
-        SubscriptionTier.PROFESSIONAL,
+        SubscriptionTier.PRO,
+        SubscriptionTier.ULTRA,
     ]:
         result = await create_checkout_session(
             db=db,

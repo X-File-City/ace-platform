@@ -6,6 +6,12 @@ manage Stripe product synchronization.
 
 Products and prices should be created in Stripe Dashboard or via API,
 then their IDs configured via environment variables.
+
+Pricing (per BILLING_DECISIONS.md):
+- Starter: $9/month, $90/year (100 evolution runs/month)
+- Pro: $29/month, $290/year (500 evolution runs/month)
+- Ultra: $79/month, $790/year (2,000 evolution runs/month)
+- Enterprise: Custom pricing (unlimited)
 """
 
 from dataclasses import dataclass
@@ -31,7 +37,7 @@ class PriceConfig:
 
     Attributes:
         price_id: Stripe price ID (from Stripe Dashboard).
-        unit_amount: Price in cents (e.g., 1000 = $10.00).
+        unit_amount: Price in cents (e.g., 900 = $9.00).
         currency: ISO currency code (default: usd).
         interval: Billing interval (month or year).
         product_id: Stripe product ID this price belongs to.
@@ -86,7 +92,7 @@ class StripeProductSettings(BaseSettings):
         extra="ignore",
     )
 
-    # Starter tier
+    # Starter tier ($9/month)
     stripe_starter_product_id: str = Field(
         default="",
         description="Stripe product ID for Starter tier",
@@ -100,32 +106,54 @@ class StripeProductSettings(BaseSettings):
         description="Stripe price ID for Starter yearly subscription",
     )
 
-    # Professional tier
-    stripe_professional_product_id: str = Field(
+    # Pro tier ($29/month)
+    stripe_pro_product_id: str = Field(
         default="",
-        description="Stripe product ID for Professional tier",
+        description="Stripe product ID for Pro tier",
     )
-    stripe_professional_monthly_price_id: str = Field(
+    stripe_pro_monthly_price_id: str = Field(
         default="",
-        description="Stripe price ID for Professional monthly subscription",
+        description="Stripe price ID for Pro monthly subscription",
     )
-    stripe_professional_yearly_price_id: str = Field(
+    stripe_pro_yearly_price_id: str = Field(
         default="",
-        description="Stripe price ID for Professional yearly subscription",
+        description="Stripe price ID for Pro yearly subscription",
     )
 
-    # Enterprise tier (custom pricing, but may have a base product)
+    # Ultra tier ($79/month)
+    stripe_ultra_product_id: str = Field(
+        default="",
+        description="Stripe product ID for Ultra tier",
+    )
+    stripe_ultra_monthly_price_id: str = Field(
+        default="",
+        description="Stripe price ID for Ultra monthly subscription",
+    )
+    stripe_ultra_yearly_price_id: str = Field(
+        default="",
+        description="Stripe price ID for Ultra yearly subscription",
+    )
+
+    # Enterprise tier (custom pricing)
     stripe_enterprise_product_id: str = Field(
         default="",
         description="Stripe product ID for Enterprise tier",
     )
 
+    # Founding member coupon (50% off for life, first 100 customers)
+    stripe_founding_member_coupon_id: str = Field(
+        default="",
+        description="Stripe coupon ID for founding member discount",
+    )
 
-# Pricing constants (in cents)
-STARTER_MONTHLY_PRICE_CENTS = 1000  # $10.00/month
-STARTER_YEARLY_PRICE_CENTS = 10000  # $100.00/year (2 months free)
-PROFESSIONAL_MONTHLY_PRICE_CENTS = 10000  # $100.00/month
-PROFESSIONAL_YEARLY_PRICE_CENTS = 100000  # $1000.00/year (2 months free)
+
+# Pricing constants (in cents) - per BILLING_DECISIONS.md
+STARTER_MONTHLY_PRICE_CENTS = 900  # $9.00/month
+STARTER_YEARLY_PRICE_CENTS = 9000  # $90.00/year (2 months free)
+PRO_MONTHLY_PRICE_CENTS = 2900  # $29.00/month
+PRO_YEARLY_PRICE_CENTS = 29000  # $290.00/year (2 months free)
+ULTRA_MONTHLY_PRICE_CENTS = 7900  # $79.00/month
+ULTRA_YEARLY_PRICE_CENTS = 79000  # $790.00/year (2 months free)
 
 
 def get_stripe_product_settings() -> StripeProductSettings:
@@ -141,20 +169,20 @@ def get_product_config(tier: SubscriptionTier) -> ProductConfig | None:
 
     Returns:
         ProductConfig if the tier has a Stripe product, None otherwise.
-        FREE tier returns None (no Stripe product).
+        FREE tier returns None (no Stripe product - internal use only).
         ENTERPRISE tier returns config but requires custom handling.
     """
     settings = get_stripe_product_settings()
 
     if tier == SubscriptionTier.FREE:
-        # Free tier has no Stripe product
+        # Free tier has no Stripe product (internal use only)
         return None
 
     if tier == SubscriptionTier.STARTER:
         return ProductConfig(
             product_id=settings.stripe_starter_product_id,
             name="ACE Starter",
-            description="For individuals getting started with AI-powered playbooks",
+            description="Get started with self-improving AI playbooks",
             tier=SubscriptionTier.STARTER,
             monthly_price=PriceConfig(
                 price_id=settings.stripe_starter_monthly_price_id,
@@ -170,39 +198,65 @@ def get_product_config(tier: SubscriptionTier) -> ProductConfig | None:
             if settings.stripe_starter_yearly_price_id
             else None,
             features=(
-                "1,000 requests/month",
-                "1M tokens/month",
-                "10 playbooks",
-                "Premium models access",
-                "Data export",
+                "100 evolution runs/month",
+                "5 playbooks",
+                "API access",
+                "Premium models",
             ),
         )
 
-    if tier == SubscriptionTier.PROFESSIONAL:
+    if tier == SubscriptionTier.PRO:
         return ProductConfig(
-            product_id=settings.stripe_professional_product_id,
-            name="ACE Professional",
-            description="For power users and teams needing higher limits",
-            tier=SubscriptionTier.PROFESSIONAL,
+            product_id=settings.stripe_pro_product_id,
+            name="ACE Pro",
+            description="For power users who need more evolutions",
+            tier=SubscriptionTier.PRO,
             monthly_price=PriceConfig(
-                price_id=settings.stripe_professional_monthly_price_id,
-                unit_amount=PROFESSIONAL_MONTHLY_PRICE_CENTS,
-                product_id=settings.stripe_professional_product_id,
+                price_id=settings.stripe_pro_monthly_price_id,
+                unit_amount=PRO_MONTHLY_PRICE_CENTS,
+                product_id=settings.stripe_pro_product_id,
             ),
             yearly_price=PriceConfig(
-                price_id=settings.stripe_professional_yearly_price_id,
-                unit_amount=PROFESSIONAL_YEARLY_PRICE_CENTS,
+                price_id=settings.stripe_pro_yearly_price_id,
+                unit_amount=PRO_YEARLY_PRICE_CENTS,
                 interval=BillingInterval.YEARLY,
-                product_id=settings.stripe_professional_product_id,
+                product_id=settings.stripe_pro_product_id,
             )
-            if settings.stripe_professional_yearly_price_id
+            if settings.stripe_pro_yearly_price_id
             else None,
             features=(
-                "10,000 requests/month",
-                "10M tokens/month",
-                "50 playbooks",
-                "Premium models access",
-                "Data export",
+                "500 evolution runs/month",
+                "20 playbooks",
+                "API access",
+                "Premium models",
+                "Priority support",
+            ),
+        )
+
+    if tier == SubscriptionTier.ULTRA:
+        return ProductConfig(
+            product_id=settings.stripe_ultra_product_id,
+            name="ACE Ultra",
+            description="High-volume tier for teams and power users",
+            tier=SubscriptionTier.ULTRA,
+            monthly_price=PriceConfig(
+                price_id=settings.stripe_ultra_monthly_price_id,
+                unit_amount=ULTRA_MONTHLY_PRICE_CENTS,
+                product_id=settings.stripe_ultra_product_id,
+            ),
+            yearly_price=PriceConfig(
+                price_id=settings.stripe_ultra_yearly_price_id,
+                unit_amount=ULTRA_YEARLY_PRICE_CENTS,
+                interval=BillingInterval.YEARLY,
+                product_id=settings.stripe_ultra_product_id,
+            )
+            if settings.stripe_ultra_yearly_price_id
+            else None,
+            features=(
+                "2,000 evolution runs/month",
+                "100 playbooks",
+                "API access",
+                "Premium models",
                 "Priority support",
             ),
         )
@@ -219,11 +273,10 @@ def get_product_config(tier: SubscriptionTier) -> ProductConfig | None:
                 product_id=settings.stripe_enterprise_product_id,
             ),
             features=(
-                "Unlimited requests",
-                "Unlimited tokens",
+                "Unlimited evolution runs",
                 "Unlimited playbooks",
-                "Premium models access",
-                "Data export",
+                "API access",
+                "Premium models",
                 "Priority support",
                 "Dedicated account manager",
                 "Custom integrations",
@@ -266,7 +319,8 @@ def get_tier_from_price_id(price_id: str) -> SubscriptionTier | None:
     """
     for tier in [
         SubscriptionTier.STARTER,
-        SubscriptionTier.PROFESSIONAL,
+        SubscriptionTier.PRO,
+        SubscriptionTier.ULTRA,
         SubscriptionTier.ENTERPRISE,
     ]:
         config = get_product_config(tier)
@@ -290,7 +344,8 @@ def get_tier_from_product_id(product_id: str) -> SubscriptionTier | None:
     """
     for tier in [
         SubscriptionTier.STARTER,
-        SubscriptionTier.PROFESSIONAL,
+        SubscriptionTier.PRO,
+        SubscriptionTier.ULTRA,
         SubscriptionTier.ENTERPRISE,
     ]:
         config = get_product_config(tier)
@@ -318,7 +373,8 @@ def get_all_products() -> list[ProductConfig]:
     products = []
     for tier in [
         SubscriptionTier.STARTER,
-        SubscriptionTier.PROFESSIONAL,
+        SubscriptionTier.PRO,
+        SubscriptionTier.ULTRA,
         SubscriptionTier.ENTERPRISE,
     ]:
         config = get_product_config(tier)

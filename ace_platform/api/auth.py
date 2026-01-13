@@ -493,7 +493,8 @@ def require_tier(minimum_tier: SubscriptionTier):
     tier_order = [
         SubscriptionTier.FREE,
         SubscriptionTier.STARTER,
-        SubscriptionTier.PROFESSIONAL,
+        SubscriptionTier.PRO,
+        SubscriptionTier.ULTRA,
         SubscriptionTier.ENTERPRISE,
     ]
 

@@ -3,16 +3,18 @@
 This module defines subscription tiers and their usage limits,
 and provides functions to check if users are within their limits.
 
-Tiers:
-- free: Limited usage for trial/free users
-- starter: Basic paid tier
-- professional: Higher limits for power users
-- enterprise: Custom/unlimited usage
+Tiers (for billing):
+- starter: Entry-level paid tier ($9/month)
+- pro: Professional tier ($29/month)
+- ultra: High-volume tier ($79/month)
+- enterprise: Custom/unlimited usage (post-launch)
+
+Note: FREE tier kept for internal use (testing, grace periods) but not
+exposed as a subscription option.
 """
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from decimal import Decimal
 from enum import Enum
 from uuid import UUID
 
@@ -22,26 +24,31 @@ from ace_platform.core.metering import get_user_usage_summary
 
 
 class SubscriptionTier(str, Enum):
-    """Subscription tier levels."""
+    """Subscription tier levels.
 
-    FREE = "free"
+    FREE is kept for internal use but not exposed as a billing option.
+    """
+
+    FREE = "free"  # Internal use only
     STARTER = "starter"
-    PROFESSIONAL = "professional"
+    PRO = "pro"
+    ULTRA = "ultra"
     ENTERPRISE = "enterprise"
 
 
 @dataclass(frozen=True)
 class TierLimits:
-    """Usage limits for a subscription tier."""
+    """Usage limits for a subscription tier.
+
+    Primary limit is monthly_evolution_runs which controls how many
+    playbook evolutions a user can trigger per month.
+    """
 
     # Monthly limits
-    monthly_requests: int | None  # None = unlimited
-    monthly_tokens: int | None
-    monthly_cost_usd: Decimal | None
+    monthly_evolution_runs: int | None  # None = unlimited
 
-    # Per-playbook limits
+    # Per-account limits
     max_playbooks: int | None
-    max_evolutions_per_day: int | None
 
     # Feature flags
     can_use_premium_models: bool
@@ -49,44 +56,39 @@ class TierLimits:
     priority_support: bool
 
 
-# Define limits for each tier
+# Define limits for each tier based on BILLING_DECISIONS.md
 TIER_LIMITS: dict[SubscriptionTier, TierLimits] = {
     SubscriptionTier.FREE: TierLimits(
-        monthly_requests=100,
-        monthly_tokens=100_000,
-        monthly_cost_usd=Decimal("1.00"),
-        max_playbooks=3,
-        max_evolutions_per_day=5,
+        monthly_evolution_runs=10,  # Very limited for internal/testing use
+        max_playbooks=1,
         can_use_premium_models=False,
         can_export_data=False,
         priority_support=False,
     ),
     SubscriptionTier.STARTER: TierLimits(
-        monthly_requests=1_000,
-        monthly_tokens=1_000_000,
-        monthly_cost_usd=Decimal("10.00"),
-        max_playbooks=10,
-        max_evolutions_per_day=20,
+        monthly_evolution_runs=100,
+        max_playbooks=5,
         can_use_premium_models=True,
         can_export_data=True,
         priority_support=False,
     ),
-    SubscriptionTier.PROFESSIONAL: TierLimits(
-        monthly_requests=10_000,
-        monthly_tokens=10_000_000,
-        monthly_cost_usd=Decimal("100.00"),
-        max_playbooks=50,
-        max_evolutions_per_day=100,
+    SubscriptionTier.PRO: TierLimits(
+        monthly_evolution_runs=500,
+        max_playbooks=20,
+        can_use_premium_models=True,
+        can_export_data=True,
+        priority_support=True,
+    ),
+    SubscriptionTier.ULTRA: TierLimits(
+        monthly_evolution_runs=2_000,
+        max_playbooks=100,
         can_use_premium_models=True,
         can_export_data=True,
         priority_support=True,
     ),
     SubscriptionTier.ENTERPRISE: TierLimits(
-        monthly_requests=None,  # Unlimited
-        monthly_tokens=None,
-        monthly_cost_usd=None,
+        monthly_evolution_runs=None,  # Unlimited
         max_playbooks=None,
-        max_evolutions_per_day=None,
         can_use_premium_models=True,
         can_export_data=True,
         priority_support=True,
@@ -102,14 +104,10 @@ class UsageStatus:
     limits: TierLimits
 
     # Current usage (this billing period)
-    current_requests: int
-    current_tokens: int
-    current_cost_usd: Decimal
+    current_evolution_runs: int
 
     # Remaining quota (None if unlimited)
-    remaining_requests: int | None
-    remaining_tokens: int | None
-    remaining_cost_usd: Decimal | None
+    remaining_evolution_runs: int | None
 
     # Status flags
     is_within_limits: bool
@@ -159,62 +157,47 @@ async def get_user_usage_status(
     period_start = get_billing_period_start()
     now = datetime.now(UTC)
 
-    # Get current usage
+    # Get current usage - total_requests represents evolution runs
     summary = await get_user_usage_summary(db, user_id, period_start, now)
 
     # Calculate remaining quota
-    remaining_requests = None
-    remaining_tokens = None
-    remaining_cost_usd = None
+    remaining_evolution_runs = None
 
-    if limits.monthly_requests is not None:
-        remaining_requests = max(0, limits.monthly_requests - summary.total_requests)
-    if limits.monthly_tokens is not None:
-        remaining_tokens = max(0, limits.monthly_tokens - summary.total_tokens)
-    if limits.monthly_cost_usd is not None:
-        remaining_cost_usd = max(Decimal("0"), limits.monthly_cost_usd - summary.total_cost_usd)
+    if limits.monthly_evolution_runs is not None:
+        remaining_evolution_runs = max(0, limits.monthly_evolution_runs - summary.total_requests)
 
     # Check if within limits
     limit_exceeded = None
     is_within_limits = True
 
-    if limits.monthly_requests is not None and summary.total_requests >= limits.monthly_requests:
+    if (
+        limits.monthly_evolution_runs is not None
+        and summary.total_requests >= limits.monthly_evolution_runs
+    ):
         is_within_limits = False
-        limit_exceeded = "monthly_requests"
-    elif limits.monthly_tokens is not None and summary.total_tokens >= limits.monthly_tokens:
-        is_within_limits = False
-        limit_exceeded = "monthly_tokens"
-    elif limits.monthly_cost_usd is not None and summary.total_cost_usd >= limits.monthly_cost_usd:
-        is_within_limits = False
-        limit_exceeded = "monthly_cost"
+        limit_exceeded = "monthly_evolution_runs"
 
     return UsageStatus(
         tier=tier,
         limits=limits,
-        current_requests=summary.total_requests,
-        current_tokens=summary.total_tokens,
-        current_cost_usd=summary.total_cost_usd,
-        remaining_requests=remaining_requests,
-        remaining_tokens=remaining_tokens,
-        remaining_cost_usd=remaining_cost_usd,
+        current_evolution_runs=summary.total_requests,
+        remaining_evolution_runs=remaining_evolution_runs,
         is_within_limits=is_within_limits,
         limit_exceeded=limit_exceeded,
     )
 
 
-async def check_can_make_request(
+async def check_can_evolve(
     db: AsyncSession,
     user_id: UUID,
     tier: SubscriptionTier = SubscriptionTier.FREE,
-    estimated_tokens: int = 0,
 ) -> tuple[bool, str | None]:
-    """Check if a user can make a new request.
+    """Check if a user can trigger an evolution.
 
     Args:
         db: Database session.
         user_id: User ID to check.
         tier: User's subscription tier.
-        estimated_tokens: Estimated tokens for the request.
 
     Returns:
         Tuple of (can_proceed, error_message).
@@ -223,11 +206,11 @@ async def check_can_make_request(
     status = await get_user_usage_status(db, user_id, tier)
 
     if not status.is_within_limits:
-        return False, f"Usage limit exceeded: {status.limit_exceeded}"
-
-    # Check if estimated tokens would exceed limit
-    if status.remaining_tokens is not None and estimated_tokens > status.remaining_tokens:
-        return False, f"Request would exceed token limit (remaining: {status.remaining_tokens})"
+        return (
+            False,
+            f"Evolution limit reached ({status.limits.monthly_evolution_runs}/month). "
+            "Upgrade your plan for more evolutions.",
+        )
 
     return True, None
 
@@ -235,7 +218,7 @@ async def check_can_make_request(
 def can_use_model(tier: SubscriptionTier, model: str) -> bool:
     """Check if a tier can use a specific model.
 
-    Premium models (o1, gpt-4) require paid tiers.
+    Premium models require paid tiers.
 
     Args:
         tier: User's subscription tier.
@@ -253,3 +236,21 @@ def can_use_model(tier: SubscriptionTier, model: str) -> bool:
             return False
 
     return True
+
+
+def can_create_playbook(tier: SubscriptionTier, current_playbook_count: int) -> bool:
+    """Check if a user can create another playbook.
+
+    Args:
+        tier: User's subscription tier.
+        current_playbook_count: Number of playbooks user currently has.
+
+    Returns:
+        True if user can create another playbook.
+    """
+    limits = get_tier_limits(tier)
+
+    if limits.max_playbooks is None:
+        return True
+
+    return current_playbook_count < limits.max_playbooks

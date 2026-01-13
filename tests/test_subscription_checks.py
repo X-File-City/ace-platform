@@ -55,13 +55,13 @@ class TestGetUserTier:
         assert result == SubscriptionTier.STARTER
 
     def test_returns_professional_tier(self):
-        """Returns PROFESSIONAL tier when user has professional subscription."""
+        """Returns PRO tier when user has professional subscription."""
         user = MagicMock(spec=User)
-        user.subscription_tier = "professional"
+        user.subscription_tier = "pro"
 
         result = get_user_tier(user)
 
-        assert result == SubscriptionTier.PROFESSIONAL
+        assert result == SubscriptionTier.PRO
 
     def test_returns_enterprise_tier(self):
         """Returns ENTERPRISE tier when user has enterprise subscription."""
@@ -153,7 +153,7 @@ class TestRequireTier:
         """Allows access when user has higher tier than required."""
         user = MagicMock(spec=User)
         user.subscription_status = SubscriptionStatus.ACTIVE
-        user.subscription_tier = "professional"
+        user.subscription_tier = "pro"
 
         checker = require_tier(SubscriptionTier.STARTER)
         result = await checker(user)
@@ -192,7 +192,7 @@ class TestRequireTier:
         """Rejects professional user for enterprise-only features."""
         user = MagicMock(spec=User)
         user.subscription_status = SubscriptionStatus.ACTIVE
-        user.subscription_tier = "professional"
+        user.subscription_tier = "pro"
 
         checker = require_tier(SubscriptionTier.ENTERPRISE)
 
@@ -264,7 +264,7 @@ class TestRequireFeature:
         """Allows priority support for professional tier."""
         user = MagicMock(spec=User)
         user.subscription_status = SubscriptionStatus.ACTIVE
-        user.subscription_tier = "professional"
+        user.subscription_tier = "pro"
 
         checker = require_feature("priority_support")
         result = await checker(user)

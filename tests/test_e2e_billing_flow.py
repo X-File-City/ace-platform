@@ -557,7 +557,7 @@ class TestTierUpgradeDowngradeFlow:
         """Test professional tier has premium features."""
         from ace_platform.core.limits import get_tier_limits
 
-        pro_limits = get_tier_limits(SubscriptionTier.PROFESSIONAL)
+        pro_limits = get_tier_limits(SubscriptionTier.PRO)
 
         assert pro_limits.can_use_premium_models is True
         assert pro_limits.can_export_data is True
