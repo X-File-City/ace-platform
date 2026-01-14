@@ -89,7 +89,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Fly.io
-        uses: superfly/flyctl-action/setup-flyctl@master
+        uses: superfly/flyctl-actions/setup-flyctl@master
 
       - name: Deploy to Production
         run: flyctl deploy --remote-only
