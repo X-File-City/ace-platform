@@ -198,6 +198,19 @@ fly scale count api=2 worker=2 beat=1
 | `fly secrets list` | List configured secrets |
 | `fly postgres connect -a ace-platform-db` | Connect to Postgres |
 
+### CI/CD Workflows (GitHub Actions)
+
+| Workflow | Trigger | Description |
+|----------|---------|-------------|
+| `staging.yml` | Push to `main` | Runs tests → Auto-deploys to staging |
+| `production.yml` | Manual dispatch | Requires "deploy" confirmation → Deploys to production |
+
+**Development Flow:**
+1. Develop locally with tests
+2. Push to `main` → Automatically deploys to staging
+3. Validate on staging (https://ace-platform-staging.fly.dev)
+4. Trigger production deploy manually from GitHub Actions
+
 ---
 
 # Project Management
