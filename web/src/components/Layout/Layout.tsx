@@ -9,6 +9,7 @@ import {
   LogOut,
   Menu,
   X,
+  CreditCard,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Logo } from '../Logo';
@@ -32,6 +33,7 @@ export function Layout({ children }: LayoutProps) {
     { to: '/dashboard', icon: BookOpen, label: 'Playbooks' },
     { to: '/api-keys', icon: Key, label: 'API Keys' },
     { to: '/usage', icon: BarChart3, label: 'Usage' },
+    { to: '/pricing', icon: CreditCard, label: 'Pricing' },
     { to: '/settings', icon: Settings, label: 'Settings' },
   ];
 

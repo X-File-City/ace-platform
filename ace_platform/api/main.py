@@ -413,7 +413,8 @@ def _register_routes(app: FastAPI) -> None:
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     async def landing_page():
         """Serve the landing page."""
-        return """<!DOCTYPE html>
+        frontend_url = settings.frontend_url.rstrip("/")
+        html = """<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -669,7 +670,7 @@ def _register_routes(app: FastAPI) -> None:
                 ACE automatically captures what works and evolves your playbooks.
             </p>
             <div class="cta-buttons">
-                <a href="https://app.aceagent.io/login" class="btn btn-primary">Get Started</a>
+                <a href="{{FRONTEND_URL}}/login" class="btn btn-primary">Get Started</a>
                 <a href="#features" class="btn btn-secondary">Learn More</a>
             </div>
         </section>
@@ -697,6 +698,7 @@ def _register_routes(app: FastAPI) -> None:
     </div>
 </body>
 </html>"""
+        return html.replace("{{FRONTEND_URL}}", frontend_url)
 
 
 # Create the application instance

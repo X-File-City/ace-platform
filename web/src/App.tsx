@@ -10,6 +10,9 @@ import { PlaybookContentEditor } from './pages/PlaybookContentEditor/PlaybookCon
 import { ApiKeys } from './pages/ApiKeys/ApiKeys';
 import { Usage } from './pages/Usage/Usage';
 import { Settings } from './pages/Settings/Settings';
+import { Pricing } from './pages/Pricing/Pricing';
+import { BillingSuccess } from './pages/BillingSuccess/BillingSuccess';
+import { BillingCancel } from './pages/BillingCancel/BillingCancel';
 import './styles/globals.css';
 
 const queryClient = new QueryClient({
@@ -79,6 +82,24 @@ function AppRoutes() {
       />
       <Route path="/oauth/callback" element={<OAuthCallback />} />
 
+      {/* Billing callback routes */}
+      <Route
+        path="/billing/success"
+        element={
+          <ProtectedRoute>
+            <BillingSuccess />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/billing/cancel"
+        element={
+          <ProtectedRoute>
+            <BillingCancel />
+          </ProtectedRoute>
+        }
+      />
+
       {/* Protected routes */}
       <Route
         path="/dashboard"
@@ -125,6 +146,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <Settings />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/pricing"
+        element={
+          <ProtectedRoute>
+            <Pricing />
           </ProtectedRoute>
         }
       />
