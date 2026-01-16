@@ -85,6 +85,8 @@ class UserResponse(BaseModel):
     email: str
     is_active: bool
     email_verified: bool
+    subscription_tier: str | None = None
+    subscription_status: str = "none"
     created_at: datetime
 
     model_config = {"from_attributes": True}

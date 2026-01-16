@@ -3,8 +3,10 @@
 export interface User {
   id: string;
   email: string;
-  subscription_tier: 'free' | 'pro' | 'enterprise';
-  subscription_status: 'active' | 'past_due' | 'canceled' | 'none';
+  is_active: boolean;
+  email_verified: boolean;
+  subscription_tier: string | null;  // 'starter', 'pro', 'ultra', or null for free
+  subscription_status: 'active' | 'past_due' | 'canceled' | 'unpaid' | 'none';
   created_at: string;
 }
 
