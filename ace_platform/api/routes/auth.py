@@ -87,6 +87,8 @@ class UserResponse(BaseModel):
     email_verified: bool
     subscription_tier: str | None = None
     subscription_status: str = "none"
+    has_used_trial: bool = False
+    trial_ends_at: datetime | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

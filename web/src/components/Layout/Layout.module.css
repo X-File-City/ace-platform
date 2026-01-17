@@ -194,6 +194,25 @@
   box-shadow: 0 0 8px var(--accent-glow);
 }
 
+/* Trial banner */
+.trialBanner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-sm) var(--space-md);
+  background: rgba(184, 134, 11, 0.1);
+  border: 1px solid var(--border-gold);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-md);
+}
+
+.trialText {
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--gold-primary);
+}
+
 /* User section */
 .userSection {
   display: flex;

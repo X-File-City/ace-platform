@@ -29,6 +29,18 @@ export function Layout({ children }: LayoutProps) {
     navigate('/login');
   };
 
+  // Calculate trial days remaining
+  const getTrialDaysRemaining = () => {
+    if (!user?.trial_ends_at) return null;
+    const trialEnd = new Date(user.trial_ends_at);
+    const now = new Date();
+    const diffTime = trialEnd.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays > 0 ? diffDays : null;
+  };
+
+  const trialDaysRemaining = getTrialDaysRemaining();
+
   const navItems = [
     { to: '/dashboard', icon: BookOpen, label: 'Playbooks' },
     { to: '/api-keys', icon: Key, label: 'API Keys' },
@@ -77,6 +89,15 @@ export function Layout({ children }: LayoutProps) {
             ))}
           </nav>
 
+          {/* Trial banner */}
+          {trialDaysRemaining !== null && (
+            <div className={styles.trialBanner}>
+              <span className={styles.trialText}>
+                {trialDaysRemaining} day{trialDaysRemaining !== 1 ? 's' : ''} left in trial
+              </span>
+            </div>
+          )}
+
           {/* User section */}
           <div className={styles.userSection}>
             <div className={styles.userInfo}>
@@ -85,7 +106,10 @@ export function Layout({ children }: LayoutProps) {
               </div>
               <div className={styles.userDetails}>
                 <span className={styles.userEmail}>{user?.email}</span>
-                <span className={styles.userTier}>{user?.subscription_tier || 'Free'}</span>
+                <span className={styles.userTier}>
+                  {user?.subscription_tier || 'Free'}
+                  {trialDaysRemaining !== null && ' (Trial)'}
+                </span>
               </div>
             </div>
             <button className={styles.logoutButton} onClick={handleLogout}>

@@ -7,6 +7,8 @@ export interface User {
   email_verified: boolean;
   subscription_tier: string | null;  // 'starter', 'pro', 'ultra', or null for free
   subscription_status: 'active' | 'past_due' | 'canceled' | 'unpaid' | 'none';
+  has_used_trial: boolean;
+  trial_ends_at: string | null;  // ISO date string if in trial
   created_at: string;
 }
 

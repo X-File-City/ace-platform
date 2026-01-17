@@ -42,6 +42,32 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <Layout>{children}</Layout>;
 }
 
+function SubscriptionRequiredRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading, user } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="loading-screen">
+        <div className="loading-spinner" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  // Check if user has an active subscription
+  const hasActiveSubscription =
+    user?.subscription_status === 'active' && user?.subscription_tier;
+
+  if (!hasActiveSubscription) {
+    return <Navigate to="/pricing" replace />;
+  }
+
+  return <Layout>{children}</Layout>;
+}
+
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
 
@@ -100,47 +126,49 @@ function AppRoutes() {
         }
       />
 
-      {/* Protected routes */}
+      {/* Routes that require active subscription */}
       <Route
         path="/dashboard"
         element={
-          <ProtectedRoute>
+          <SubscriptionRequiredRoute>
             <Dashboard />
-          </ProtectedRoute>
+          </SubscriptionRequiredRoute>
         }
       />
       <Route
         path="/playbooks/:id"
         element={
-          <ProtectedRoute>
+          <SubscriptionRequiredRoute>
             <PlaybookDetail />
-          </ProtectedRoute>
+          </SubscriptionRequiredRoute>
         }
       />
       <Route
         path="/playbooks/:id/edit"
         element={
-          <ProtectedRoute>
+          <SubscriptionRequiredRoute>
             <PlaybookContentEditor />
-          </ProtectedRoute>
+          </SubscriptionRequiredRoute>
         }
       />
       <Route
         path="/api-keys"
         element={
-          <ProtectedRoute>
+          <SubscriptionRequiredRoute>
             <ApiKeys />
-          </ProtectedRoute>
+          </SubscriptionRequiredRoute>
         }
       />
       <Route
         path="/usage"
         element={
-          <ProtectedRoute>
+          <SubscriptionRequiredRoute>
             <Usage />
-          </ProtectedRoute>
+          </SubscriptionRequiredRoute>
         }
       />
+
+      {/* Protected routes (no subscription required) */}
       <Route
         path="/settings"
         element={

@@ -204,16 +204,22 @@ async def _handle_checkout_completed(
 
     # Update user with customer and subscription ID
     tier = metadata.get("tier")
-    await db.execute(
-        update(User)
-        .where(User.id == user.id)
-        .values(
-            stripe_customer_id=customer_id,
-            stripe_subscription_id=subscription_id,
-            subscription_tier=tier,
-            subscription_status=SubscriptionStatus.ACTIVE,
-        )
-    )
+    is_trial = metadata.get("is_trial") == "true"
+
+    # Build update values
+    update_values: dict = {
+        "stripe_customer_id": customer_id,
+        "stripe_subscription_id": subscription_id,
+        "subscription_tier": tier,
+        "subscription_status": SubscriptionStatus.ACTIVE,
+    }
+
+    # If this is a trial, mark user as having used their trial
+    if is_trial:
+        update_values["has_used_trial"] = True
+        logger.info(f"User {user.id} started 7-day free trial")
+
+    await db.execute(update(User).where(User.id == user.id).values(**update_values))
     await db.commit()
 
     logger.info(f"Updated user {user.id} with subscription {subscription_id}")
@@ -246,16 +252,22 @@ async def _handle_subscription_created(
     status = _map_stripe_status(subscription.status)
     period_end = datetime.fromtimestamp(subscription.current_period_end, tz=UTC)
 
-    await db.execute(
-        update(User)
-        .where(User.id == user.id)
-        .values(
-            stripe_subscription_id=subscription.id,
-            subscription_tier=tier,
-            subscription_status=status,
-            subscription_current_period_end=period_end,
-        )
-    )
+    # Build update values
+    update_values: dict = {
+        "stripe_subscription_id": subscription.id,
+        "subscription_tier": tier,
+        "subscription_status": status,
+        "subscription_current_period_end": period_end,
+    }
+
+    # Check if subscription has a trial period
+    if subscription.trial_end:
+        trial_ends_at = datetime.fromtimestamp(subscription.trial_end, tz=UTC)
+        update_values["trial_ends_at"] = trial_ends_at
+        update_values["has_used_trial"] = True
+        logger.info(f"Subscription has trial ending at {trial_ends_at}")
+
+    await db.execute(update(User).where(User.id == user.id).values(**update_values))
     await db.commit()
 
     logger.info(f"Subscription created for user {user.id}: {subscription.id}")
@@ -291,16 +303,23 @@ async def _handle_subscription_updated(
     status = _map_stripe_status(subscription.status)
     period_end = datetime.fromtimestamp(subscription.current_period_end, tz=UTC)
 
-    await db.execute(
-        update(User)
-        .where(User.id == user.id)
-        .values(
-            stripe_subscription_id=subscription.id,
-            subscription_tier=tier,
-            subscription_status=status,
-            subscription_current_period_end=period_end,
-        )
-    )
+    # Build update values
+    update_values: dict = {
+        "stripe_subscription_id": subscription.id,
+        "subscription_tier": tier,
+        "subscription_status": status,
+        "subscription_current_period_end": period_end,
+    }
+
+    # Update trial_ends_at (may be None if trial ended or no trial)
+    if subscription.trial_end:
+        trial_ends_at = datetime.fromtimestamp(subscription.trial_end, tz=UTC)
+        update_values["trial_ends_at"] = trial_ends_at
+    else:
+        # Trial ended or no trial - clear the trial end date
+        update_values["trial_ends_at"] = None
+
+    await db.execute(update(User).where(User.id == user.id).values(**update_values))
     await db.commit()
 
     logger.info(f"Subscription updated for user {user.id}: status={status}")
@@ -340,6 +359,7 @@ async def _handle_subscription_deleted(
             subscription_tier=None,
             subscription_status=SubscriptionStatus.CANCELED,
             subscription_current_period_end=None,
+            trial_ends_at=None,  # Clear trial end date
         )
     )
     await db.commit()

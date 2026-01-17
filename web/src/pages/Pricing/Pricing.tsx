@@ -64,6 +64,7 @@ export function Pricing() {
   const [error, setError] = useState<string | null>(null);
 
   const currentTier = user?.subscription_tier?.toLowerCase() || 'free';
+  const canUseTrial = !user?.has_used_trial;
 
   const handleSubscribe = async (tierId: string) => {
     setError(null);
@@ -101,6 +102,11 @@ export function Pricing() {
       <div className={styles.header}>
         <h1>Choose Your Plan</h1>
         <p>Scale your playbook evolution with the right plan for your needs</p>
+        {canUseTrial && (
+          <p className={styles.trialBanner}>
+            Start with a <strong>7-day free trial</strong> on Starter. No charge until trial ends.
+          </p>
+        )}
       </div>
 
       {error && (
@@ -118,6 +124,7 @@ export function Pricing() {
             isCurrentPlan={currentTier === tier.id}
             isLoading={loadingTier === tier.id}
             onSubscribe={handleSubscribe}
+            showTrialCTA={canUseTrial}
           />
         ))}
       </div>

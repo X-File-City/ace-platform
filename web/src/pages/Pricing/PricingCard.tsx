@@ -17,13 +17,15 @@ interface PricingCardProps {
   isCurrentPlan: boolean;
   isLoading: boolean;
   onSubscribe: (tierId: string) => void;
+  showTrialCTA?: boolean;  // Show "Start 7-Day Free Trial" for Starter tier
 }
 
-export function PricingCard({ tier, isCurrentPlan, isLoading, onSubscribe }: PricingCardProps) {
+export function PricingCard({ tier, isCurrentPlan, isLoading, onSubscribe, showTrialCTA }: PricingCardProps) {
   const getButtonText = () => {
     if (isLoading) return 'Processing...';
     if (isCurrentPlan) return 'Current Plan';
-    return 'Subscribe';
+    if (showTrialCTA && tier.id === 'starter') return 'Start 7-Day Free Trial';
+    return `Subscribe - $${tier.price}/mo`;
   };
 
   const getButtonClass = () => {

@@ -25,6 +25,17 @@
   margin: 0 auto;
 }
 
+.trialBanner {
+  display: inline-block;
+  background: rgba(77, 208, 175, 0.1);
+  border: 1px solid rgba(77, 208, 175, 0.3);
+  color: var(--success);
+  padding: var(--space-sm) var(--space-lg);
+  border-radius: var(--radius-md);
+  margin-top: var(--space-md);
+  font-size: 1rem;
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

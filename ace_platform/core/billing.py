@@ -109,6 +109,7 @@ async def create_checkout_session(
     interval: BillingInterval = BillingInterval.MONTHLY,
     success_url: str | None = None,
     cancel_url: str | None = None,
+    include_trial: bool = False,
 ) -> CheckoutSessionResult:
     """Create a Stripe checkout session for subscription.
 
@@ -119,6 +120,7 @@ async def create_checkout_session(
         interval: Billing interval (monthly or yearly).
         success_url: URL to redirect to on successful checkout.
         cancel_url: URL to redirect to if checkout is cancelled.
+        include_trial: Whether to include a 7-day free trial (Starter tier only).
 
     Returns:
         CheckoutSessionResult with checkout URL or error.
@@ -169,6 +171,19 @@ async def create_checkout_session(
 
         # Create checkout session
         client = _get_stripe_client()
+
+        # Build subscription_data with optional trial period
+        subscription_data: dict = {
+            "metadata": {
+                "user_id": str(user.id),
+                "tier": tier.value,
+            },
+        }
+
+        # Add 7-day trial for Starter tier if eligible
+        if include_trial and tier == SubscriptionTier.STARTER:
+            subscription_data["trial_period_days"] = 7
+
         session = client.checkout.sessions.create(
             params={
                 "customer": customer_id,
@@ -185,13 +200,9 @@ async def create_checkout_session(
                     "user_id": str(user.id),
                     "tier": tier.value,
                     "interval": interval.value,
+                    "is_trial": str(include_trial and tier == SubscriptionTier.STARTER).lower(),
                 },
-                "subscription_data": {
-                    "metadata": {
-                        "user_id": str(user.id),
-                        "tier": tier.value,
-                    },
-                },
+                "subscription_data": subscription_data,
             }
         )
 

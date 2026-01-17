@@ -234,10 +234,14 @@ async def subscribe(
         SubscriptionTier.PRO,
         SubscriptionTier.ULTRA,
     ]:
+        # Include 7-day trial for Starter tier if user hasn't used trial before
+        include_trial = request.tier == SubscriptionTier.STARTER and not current_user.has_used_trial
+
         result = await create_checkout_session(
             db=db,
             user=current_user,
             tier=request.tier,
+            include_trial=include_trial,
         )
 
         if result.success:
