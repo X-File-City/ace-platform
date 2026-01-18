@@ -102,11 +102,6 @@ export function Pricing() {
       <div className={styles.header}>
         <h1>Choose Your Plan</h1>
         <p>Scale your playbook evolution with the right plan for your needs</p>
-        {canUseTrial && (
-          <p className={styles.trialBanner}>
-            Start with a <strong>7-day free trial</strong> on Starter. No charge until trial ends.
-          </p>
-        )}
       </div>
 
       {error && (

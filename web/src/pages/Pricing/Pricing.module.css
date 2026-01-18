@@ -25,15 +25,16 @@
   margin: 0 auto;
 }
 
+/* Trial banner inside Starter card */
 .trialBanner {
-  display: inline-block;
   background: rgba(77, 208, 175, 0.1);
   border: 1px solid rgba(77, 208, 175, 0.3);
   color: var(--success);
-  padding: var(--space-sm) var(--space-lg);
+  padding: var(--space-sm) var(--space-md);
   border-radius: var(--radius-md);
-  margin-top: var(--space-md);
-  font-size: 1rem;
+  margin-bottom: var(--space-md);
+  font-size: 0.875rem;
+  text-align: center;
 }
 
 .grid {

@@ -68,6 +68,12 @@ export function PricingCard({ tier, isCurrentPlan, isLoading, onSubscribe, showT
         ))}
       </div>
 
+      {showTrialCTA && tier.id === 'starter' && (
+        <div className={styles.trialBanner}>
+          <strong>7-day free trial</strong> — No charge until trial ends
+        </div>
+      )}
+
       <button
         className={getButtonClass()}
         onClick={() => onSubscribe(tier.id)}
