@@ -2,6 +2,8 @@ app = 'ace-platform-web'
 primary_region = 'iad'
 
 [build]
+  [build.args]
+    VITE_API_URL = "https://ace-platform.fly.dev"
 
 [http_service]
   internal_port = 80

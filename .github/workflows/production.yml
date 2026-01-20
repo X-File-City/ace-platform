@@ -91,18 +91,26 @@ jobs:
       - name: Set up Fly.io
         uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Deploy to Production
+      - name: Deploy Backend to Production
         run: flyctl deploy --remote-only
 
-      - name: Verify Deployment
+      - name: Deploy Frontend to Production
+        run: flyctl deploy --config web/fly.toml --remote-only
+
+      - name: Verify Backend Deployment
         run: |
           sleep 15
           curl -f https://ace-platform.fly.dev/health || exit 1
+
+      - name: Verify Frontend Deployment
+        run: |
+          curl -f https://ace-platform-web.fly.dev/ || exit 1
 
       - name: Deployment Summary
         run: |
           echo "## Production Deployment Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **URL:** https://ace-platform.fly.dev" >> $GITHUB_STEP_SUMMARY
+          echo "- **Backend URL:** https://ace-platform.fly.dev" >> $GITHUB_STEP_SUMMARY
+          echo "- **Frontend URL:** https://ace-platform-web.fly.dev" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Deployed by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
