@@ -1,0 +1,19 @@
+app = 'ace-platform-web-staging'
+primary_region = 'iad'
+
+[build]
+  [build.args]
+    VITE_API_URL = "https://ace-platform-staging.fly.dev"
+
+[http_service]
+  internal_port = 80
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+[[vm]]
+  memory = '256mb'
+  cpu_kind = 'shared'
+  cpus = 1
