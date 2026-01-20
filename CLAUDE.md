@@ -211,6 +211,41 @@ fly scale count api=2 worker=2 beat=1
 3. Validate on staging (https://ace-platform-staging.fly.dev)
 4. Trigger production deploy manually from GitHub Actions
 
+### Environment Details
+
+#### Production
+| Component | Fly.io App | Domain |
+|-----------|------------|--------|
+| Backend (API) | `ace-platform` | `aceagent.io` |
+| Frontend | `ace-platform-web` | `app.aceagent.io` |
+| Database | `ace-platform-db` | (internal) |
+
+**Important Production Settings:**
+- `VITE_API_URL` (frontend build arg): `https://aceagent.io`
+- `FRONTEND_URL` (backend secret): `https://app.aceagent.io`
+- `OAUTH_REDIRECT_BASE_URL` (backend secret): `https://aceagent.io`
+- `CORS_ORIGINS` (backend secret): `["https://app.aceagent.io", "https://ace-platform-web.fly.dev", "http://localhost:3000"]`
+
+#### Staging
+| Component | Fly.io App | Domain |
+|-----------|------------|--------|
+| Backend (API) | `ace-platform-staging` | `ace-platform-staging.fly.dev` |
+| Frontend | `ace-platform-web-staging` | `ace-platform-web-staging.fly.dev` |
+| Database | `ace-platform-staging-db` | (internal) |
+
+**Important Staging Settings:**
+- `VITE_API_URL` (frontend build arg): `https://ace-platform-staging.fly.dev`
+- `FRONTEND_URL` (backend secret): `https://ace-platform-web-staging.fly.dev`
+- `OAUTH_REDIRECT_BASE_URL` (backend secret): `https://ace-platform-staging.fly.dev`
+- `CORS_ORIGINS` (backend secret): `["https://ace-platform-web-staging.fly.dev", "http://localhost:3000"]`
+
+#### OAuth Configuration
+For OAuth to work correctly:
+1. Frontend `VITE_API_URL` must point to the backend domain
+2. Backend `OAUTH_REDIRECT_BASE_URL` must match where OAuth callbacks are received
+3. Backend `FRONTEND_URL` must point to the frontend domain (for post-OAuth redirects)
+4. Google/GitHub OAuth apps must have the callback URL: `https://{OAUTH_REDIRECT_BASE_URL}/auth/oauth/{provider}/callback`
+
 ---
 
 # Project Management
