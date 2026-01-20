@@ -95,7 +95,8 @@ jobs:
         run: flyctl deploy --remote-only
 
       - name: Deploy Frontend to Production
-        run: flyctl deploy --config web/fly.toml --remote-only
+        working-directory: web
+        run: flyctl deploy --remote-only
 
       - name: Verify Backend Deployment
         run: |

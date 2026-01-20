@@ -80,7 +80,8 @@ jobs:
         run: flyctl deploy --config fly.staging.toml --remote-only
 
       - name: Deploy Frontend to Staging
-        run: flyctl deploy --config web/fly.staging.toml --remote-only
+        working-directory: web
+        run: flyctl deploy --config fly.staging.toml --remote-only
 
       - name: Verify Backend Deployment
         run: |
