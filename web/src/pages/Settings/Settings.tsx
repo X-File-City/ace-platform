@@ -22,6 +22,7 @@ export function Settings() {
   const [unlinking, setUnlinking] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [managingSubscription, setManagingSubscription] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -74,7 +75,21 @@ export function Settings() {
     }
   };
 
+  const handleManageSubscription = async () => {
+    setManagingSubscription(true);
+    setError(null);
+
+    try {
+      const response = await api.post<{ url: string }>('/billing/portal');
+      window.location.href = response.data.url;
+    } catch {
+      setError('Failed to open billing portal. Please try again.');
+      setManagingSubscription(false);
+    }
+  };
+
   const showOAuthSection = providers && (providers.google || providers.github);
+  const hasSubscription = user?.subscription_tier && user?.subscription_status === 'active';
 
   return (
     <div className={styles.container}>
@@ -95,6 +110,18 @@ export function Settings() {
             <label>Subscription</label>
             <span className={styles.badge}>{user?.subscription_tier || 'Free'}</span>
           </div>
+          {hasSubscription && (
+            <div className={styles.field}>
+              <label>Billing</label>
+              <button
+                className={styles.manageButton}
+                onClick={handleManageSubscription}
+                disabled={managingSubscription}
+              >
+                {managingSubscription ? 'Opening...' : 'Manage Subscription'}
+              </button>
+            </div>
+          )}
         </div>
       </section>
 
