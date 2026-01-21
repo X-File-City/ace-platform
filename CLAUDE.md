@@ -14,6 +14,11 @@ source venv/bin/activate && <command>
 source venv/bin/activate && pip install <package>
 ```
 
+**Local Frontend Development:** Always run the frontend on port 3000. Kill any existing process on port 3000 before starting:
+```bash
+lsof -ti :3000 | xargs kill -9 2>/dev/null; cd web && npm run dev -- --port 3000
+```
+
 ## Architecture Overview
 
 - **ace_core/**: Core ACE implementation (Generator, Reflector, Curator agents)
