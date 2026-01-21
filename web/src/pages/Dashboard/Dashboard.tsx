@@ -6,6 +6,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
+import { SubscriptionGate } from '../../components/SubscriptionGate';
 import {
   Plus,
   BookOpen,
@@ -59,9 +60,11 @@ export function Dashboard() {
           <h1>Playbooks</h1>
           <p>Living documentation that evolves with your outcomes</p>
         </div>
-        <Button icon={<Plus size={18} />} onClick={() => setShowCreateModal(true)}>
-          New Playbook
-        </Button>
+        <SubscriptionGate featureName="Playbooks">
+          <Button icon={<Plus size={18} />} onClick={() => setShowCreateModal(true)}>
+            New Playbook
+          </Button>
+        </SubscriptionGate>
       </div>
 
       {/* Filters */}
@@ -192,9 +195,11 @@ function EmptyState({ onCreateClick }: { onCreateClick: () => void }) {
       </div>
       <h2>No playbooks yet</h2>
       <p>Create your first playbook to start building living documentation</p>
-      <Button icon={<Plus size={18} />} onClick={onCreateClick}>
-        Create your first playbook
-      </Button>
+      <SubscriptionGate featureName="Playbooks">
+        <Button icon={<Plus size={18} />} onClick={onCreateClick}>
+          Create your first playbook
+        </Button>
+      </SubscriptionGate>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { apiKeysApi } from '../../utils/api';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
+import { SubscriptionGate } from '../../components/SubscriptionGate';
 import {
   Plus,
   Key,
@@ -70,9 +71,11 @@ export function ApiKeys() {
           <h1>API Keys</h1>
           <p>Manage API keys for MCP integration and programmatic access</p>
         </div>
-        <Button icon={<Plus size={18} />} onClick={() => setShowCreateModal(true)}>
-          Create API Key
-        </Button>
+        <SubscriptionGate featureName="API Keys">
+          <Button icon={<Plus size={18} />} onClick={() => setShowCreateModal(true)}>
+            Create API Key
+          </Button>
+        </SubscriptionGate>
       </div>
 
       {/* Warning Banner */}
@@ -230,9 +233,11 @@ function EmptyState({ onCreateClick }: { onCreateClick: () => void }) {
       </div>
       <h2>No API keys yet</h2>
       <p>Create an API key to connect your playbooks with Claude or other tools</p>
-      <Button icon={<Plus size={18} />} onClick={onCreateClick}>
-        Create your first API key
-      </Button>
+      <SubscriptionGate featureName="API Keys">
+        <Button icon={<Plus size={18} />} onClick={onCreateClick}>
+          Create your first API key
+        </Button>
+      </SubscriptionGate>
     </div>
   );
 }
