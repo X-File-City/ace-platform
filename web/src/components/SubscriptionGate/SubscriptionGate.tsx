@@ -43,7 +43,7 @@ export function SubscriptionGate({ children, featureName = 'this feature' }: Sub
 
   return (
     <>
-      <div onClick={handleClick} className={styles.gatedWrapper}>
+      <div onClickCapture={handleClick} className={styles.gatedWrapper}>
         {children}
       </div>
 
