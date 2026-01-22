@@ -20,22 +20,22 @@ import styles from './Usage.module.css';
 import { useNavigate } from 'react-router-dom';
 
 export function Usage() {
-  const { data: summary, isLoading: summaryLoading } = useQuery({
+  const { data: summary, isLoading: summaryLoading } = useQuery<EvolutionSummary>({
     queryKey: ['evolution-summary'],
     queryFn: evolutionsApi.getSummary,
   });
 
-  const { data: dailyEvolutions, isLoading: dailyLoading } = useQuery({
+  const { data: dailyEvolutions, isLoading: dailyLoading } = useQuery<DailyEvolution[]>({
     queryKey: ['evolution-daily'],
     queryFn: () => evolutionsApi.getDaily(30),
   });
 
-  const { data: playbookStats, isLoading: playbookLoading } = useQuery({
+  const { data: playbookStats, isLoading: playbookLoading } = useQuery<PlaybookEvolutionStats[]>({
     queryKey: ['evolution-by-playbook'],
     queryFn: () => evolutionsApi.getByPlaybook(5),
   });
 
-  const { data: recentEvolutions, isLoading: recentLoading } = useQuery({
+  const { data: recentEvolutions, isLoading: recentLoading } = useQuery<RecentEvolution[]>({
     queryKey: ['evolution-recent'],
     queryFn: () => evolutionsApi.getRecent(10),
   });
