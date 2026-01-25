@@ -1,10 +1,10 @@
 """Tests for email verification functionality."""
 
-import pytest
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
+import pytest
 from jose import jwt
 
 from ace_platform.config import get_settings
