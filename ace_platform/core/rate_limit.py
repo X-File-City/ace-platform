@@ -44,6 +44,7 @@ RATE_LIMITS = {
     "oauth": {"limit": 10, "window_seconds": 60},  # 10 per minute per IP (OAuth flow)
     "outcome": {"limit": 100, "window_seconds": 3600},  # 100 per hour per user
     "evolution": {"limit": 10, "window_seconds": 3600},  # 10 per hour per playbook
+    "verification_email": {"limit": 3, "window_seconds": 3600},  # 3 per hour per user
 }
 
 
@@ -414,6 +415,28 @@ async def rate_limit_oauth(request: Request) -> None:
         request,
         action="oauth",
         identifier=client_ip,
+        limit=config["limit"],
+        window_seconds=config["window_seconds"],
+    )
+
+
+async def rate_limit_verification_email(request: Request, user_id: str) -> None:
+    """Rate limit dependency for verification email requests.
+
+    Limits to 3 requests per hour per user to prevent email spam.
+
+    Args:
+        request: The incoming request.
+        user_id: The authenticated user's ID.
+
+    Raises:
+        RateLimitExceeded: If rate limit is exceeded.
+    """
+    config = RATE_LIMITS["verification_email"]
+    await _check_rate_limit(
+        request,
+        action="verification_email",
+        identifier=user_id,
         limit=config["limit"],
         window_seconds=config["window_seconds"],
     )

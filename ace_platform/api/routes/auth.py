@@ -39,7 +39,7 @@ from ace_platform.core.login_lockout import (
     record_login_failure,
     reset_login_lockout,
 )
-from ace_platform.core.rate_limit import RateLimitLogin
+from ace_platform.core.rate_limit import RateLimitLogin, rate_limit_verification_email
 from ace_platform.core.security import (
     InvalidTokenError,
     TokenExpiredError,
@@ -542,16 +542,21 @@ settings = get_settings()
     responses={
         401: {"description": "Not authenticated"},
         400: {"description": "Email already verified or email service unavailable"},
+        429: {"description": "Rate limit exceeded (3 emails per hour)"},
     },
 )
 async def send_verification_email_endpoint(
+    request: Request,
     user: RequiredUser,
 ) -> SendVerificationEmailResponse:
     """Send a verification email to the authenticated user.
 
     Use this to resend the verification email if the original was lost.
-    Has no effect if email is already verified.
+    Has no effect if email is already verified. Rate limited to 3 emails per hour.
     """
+    # Apply rate limiting (3/hour per user) to prevent email spam
+    await rate_limit_verification_email(request, str(user.id))
+
     if user.email_verified:
         return SendVerificationEmailResponse(
             message="Email is already verified",
