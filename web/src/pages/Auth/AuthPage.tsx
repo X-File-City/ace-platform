@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { AxiosError } from 'axios';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -43,7 +44,13 @@ export function AuthPage() {
       }
       navigate('/dashboard');
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'An error occurred';
+      // Extract error message from API response or fall back to generic message
+      let message = 'An error occurred';
+      if (err instanceof AxiosError && err.response?.data?.detail) {
+        message = err.response.data.detail;
+      } else if (err instanceof Error) {
+        message = err.message;
+      }
       setError(message);
     } finally {
       setIsLoading(false);
