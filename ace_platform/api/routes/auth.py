@@ -21,12 +21,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ace_platform.api.auth import AuthenticationError, RequiredUser, VerifiedUser
 from ace_platform.api.deps import get_db
+from ace_platform.config import get_settings
 from ace_platform.core.api_keys import (
     create_api_key_async,
     list_api_keys_async,
     revoke_api_key_async,
 )
-from ace_platform.config import get_settings
 from ace_platform.core.email import (
     create_email_verification_token,
     decode_email_verification_token,
