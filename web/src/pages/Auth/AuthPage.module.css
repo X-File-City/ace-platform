@@ -298,6 +298,32 @@
   text-align: center;
 }
 
+.errorHelp {
+  margin-top: var(--space-sm);
+  padding-top: var(--space-sm);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.errorLink {
+  background: none;
+  border: none;
+  color: var(--gold-primary);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 500;
+  padding: 0;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  transition: text-decoration-color var(--transition-fast);
+}
+
+.errorLink:hover {
+  text-decoration-color: var(--gold-primary);
+}
+
 .submitButton {
   width: 100%;
   margin-top: var(--space-sm);

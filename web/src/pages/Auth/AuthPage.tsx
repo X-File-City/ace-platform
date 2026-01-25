@@ -157,7 +157,23 @@ export function AuthPage() {
                 />
               )}
 
-              {error && <div className={styles.error}>{error}</div>}
+              {error && (
+                <div className={styles.error}>
+                  {error}
+                  {mode === 'login' && error.toLowerCase().includes('invalid') && (
+                    <div className={styles.errorHelp}>
+                      New here?{' '}
+                      <button type="button" onClick={toggleMode} className={styles.errorLink}>
+                        Create an account
+                      </button>
+                      {' · '}
+                      <Link to="/forgot-password" className={styles.errorLink}>
+                        Reset password
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <Button type="submit" isLoading={isLoading} className={styles.submitButton}>
                 {mode === 'login' ? 'Sign in' : 'Create account'}
