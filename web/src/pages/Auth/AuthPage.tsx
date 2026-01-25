@@ -46,8 +46,10 @@ export function AuthPage() {
     } catch (err: unknown) {
       // Extract error message from API response or fall back to generic message
       let message = 'An error occurred';
-      if (err instanceof AxiosError && err.response?.data?.detail) {
-        message = err.response.data.detail;
+      if (err instanceof AxiosError && err.response?.data) {
+        // Handle both error formats: {error: {message}} and {detail}
+        const data = err.response.data;
+        message = data.error?.message || data.detail || message;
       } else if (err instanceof Error) {
         message = err.message;
       }
