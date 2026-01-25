@@ -202,24 +202,6 @@ class Settings(BaseSettings):
         description="Sentry profiling sample rate (0.0 to 1.0)",
     )
 
-    # Email (Resend)
-    resend_api_key: str = Field(
-        default="",
-        description="Resend API key for sending emails. Leave empty to disable email features.",
-    )
-    email_from_address: str = Field(
-        default="noreply@aceagent.io",
-        description="From address for outgoing emails",
-    )
-    email_from_name: str = Field(
-        default="ACE Platform",
-        description="From name for outgoing emails",
-    )
-    email_verification_token_expire_hours: int = Field(
-        default=24,
-        description="Email verification token expiration time in hours",
-    )
-
     @field_validator("database_url", mode="after")
     @classmethod
     def normalize_database_url(cls, v: str) -> str:

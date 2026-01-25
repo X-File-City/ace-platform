@@ -331,8 +331,7 @@ async def record_outcome(
     """Record a task outcome for playbook evolution.
 
     After recording enough outcomes, the playbook will automatically evolve
-    to incorporate lessons learned. Requires 'outcomes:write' scope and
-    email verification.
+    to incorporate lessons learned. Requires 'outcomes:write' scope.
 
     Size limits:
     - task_description: 10KB max
@@ -357,10 +356,6 @@ async def record_outcome(
         return "Error: Invalid or revoked API key"
 
     api_key_record, user = auth_result
-
-    # Check email verification (required to prevent abuse)
-    if not user.email_verified:
-        return "Error: Email verification required. Please verify your email before recording outcomes."
 
     # Check scope
     from ace_platform.core.api_keys import check_scope
@@ -513,8 +508,7 @@ async def trigger_evolution(
     """Manually trigger playbook evolution.
 
     This queues an evolution job that will process unprocessed outcomes
-    and generate an improved playbook version. Requires 'evolution:write' scope
-    and email verification.
+    and generate an improved playbook version. Requires 'evolution:write' scope.
 
     Note: Evolution happens automatically based on thresholds, but you can
     trigger it manually if needed.
@@ -532,10 +526,6 @@ async def trigger_evolution(
         return "Error: Invalid or revoked API key"
 
     api_key_record, user = auth_result
-
-    # Check email verification (required for evolution to prevent abuse)
-    if not user.email_verified:
-        return "Error: Email verification required. Please verify your email before triggering evolutions."
 
     # Check scope
     from ace_platform.core.api_keys import check_scope

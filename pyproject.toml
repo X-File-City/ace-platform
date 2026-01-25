@@ -60,9 +60,6 @@ dependencies = [
 
     # Error tracking
     "sentry-sdk[fastapi,celery]>=2.0.0",
-
-    # Email
-    "resend>=2.0.0",
 ]
 
 [project.optional-dependencies]

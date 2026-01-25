@@ -26,7 +26,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from ace_platform.api.auth import (
-    AuthorizationError,
     SubscriptionError,
     get_user_tier,
     require_active_subscription,
@@ -850,10 +849,7 @@ async def list_playbook_outcomes(
     "/{playbook_id}/outcomes",
     response_model=OutcomeCreateResponse,
     status_code=status.HTTP_201_CREATED,
-    responses={
-        403: {"description": "Email verification required"},
-        429: {"description": "Rate limit exceeded"},
-    },
+    responses={429: {"description": "Rate limit exceeded"}},
 )
 async def create_outcome(
     request: Request,
@@ -865,13 +861,8 @@ async def create_outcome(
     """Create a new outcome for a playbook.
 
     Records a task outcome (success, failure, or partial) for evolution feedback.
-    Requires active subscription and email verification.
-    Rate limited to 100 outcomes per hour per user.
+    Requires active subscription. Rate limited to 100 outcomes per hour per user.
     """
-    # Require email verification to prevent abuse
-    if not current_user.email_verified:
-        raise AuthorizationError("Email verification required to record outcomes")
-
     # Apply rate limiting (100/hour per user)
     await rate_limit_outcome(request, str(current_user.id))
     # Verify playbook exists and belongs to user
