@@ -6,6 +6,7 @@ This module provides REST API endpoints for:
 - Current user info (GET /auth/me) - see issue ace-platform-27
 - Token refresh (POST /auth/refresh) - see issue ace-platform-72
 - API key management (POST/GET/DELETE /auth/api-keys) - see issue ace-platform-71
+- Email verification (POST /auth/send-verification-email, /auth/verify-email)
 """
 
 from datetime import datetime
@@ -18,12 +19,20 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ace_platform.api.auth import AuthenticationError, RequiredUser
+from ace_platform.api.auth import AuthenticationError, RequiredUser, VerifiedUser
 from ace_platform.api.deps import get_db
 from ace_platform.core.api_keys import (
     create_api_key_async,
     list_api_keys_async,
     revoke_api_key_async,
+)
+from ace_platform.config import get_settings
+from ace_platform.core.email import (
+    create_email_verification_token,
+    decode_email_verification_token,
+    is_email_enabled,
+    send_verification_email,
+    send_welcome_email,
 )
 from ace_platform.core.login_lockout import (
     check_login_lockout,
@@ -224,7 +233,11 @@ async def register(
     """Register a new user account.
 
     Creates a new user with the provided email and password, then returns
-    JWT tokens for immediate authentication.
+    JWT tokens for immediate authentication. A verification email is sent
+    to complete the registration.
+
+    Note: Some features require email verification. OAuth users are
+    automatically verified.
     """
     # Check if email already exists
     existing_user = await get_user_by_email(db, request.email)
@@ -238,6 +251,7 @@ async def register(
     user = User(
         email=request.email.lower(),
         hashed_password=hash_password(request.password),
+        email_verified=False,  # Requires verification
     )
     db.add(user)
 
@@ -252,6 +266,12 @@ async def register(
         )
 
     await db.refresh(user)
+
+    # Send verification email (fire and forget - don't fail registration if email fails)
+    if is_email_enabled():
+        token = create_email_verification_token(user.id, user.email)
+        verification_url = f"{get_settings().frontend_url}/verify-email?token={token}"
+        await send_verification_email(user.email, verification_url)
 
     # Return tokens
     return create_tokens(user.id)
@@ -376,14 +396,18 @@ async def get_current_user(user: RequiredUser) -> UserResponse:
     summary="Create a new API key",
     responses={
         401: {"description": "Not authenticated"},
+        403: {"description": "Email verification required"},
     },
 )
 async def create_api_key(
     request: CreateApiKeyRequest,
-    user: RequiredUser,
+    user: VerifiedUser,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> ApiKeyResponse:
     """Create a new API key for the authenticated user.
+
+    Requires email verification. OAuth users are automatically verified.
+    Password-registered users must verify their email first.
 
     **Important:** The full API key is only returned once in this response.
     Store it securely - it cannot be retrieved again.
@@ -477,3 +501,145 @@ async def revoke_api_key(
         )
 
     await db.commit()
+
+
+# =============================================================================
+# Email Verification Schemas
+# =============================================================================
+
+
+class VerifyEmailRequest(BaseModel):
+    """Request body for email verification."""
+
+    token: str = Field(..., description="Email verification token")
+
+
+class SendVerificationEmailResponse(BaseModel):
+    """Response for send verification email request."""
+
+    message: str
+    email_sent: bool
+
+
+class VerifyEmailResponse(BaseModel):
+    """Response for email verification."""
+
+    message: str
+    verified: bool
+
+
+# =============================================================================
+# Email Verification Routes
+# =============================================================================
+
+settings = get_settings()
+
+
+@router.post(
+    "/send-verification-email",
+    response_model=SendVerificationEmailResponse,
+    summary="Send or resend verification email",
+    responses={
+        401: {"description": "Not authenticated"},
+        400: {"description": "Email already verified or email service unavailable"},
+    },
+)
+async def send_verification_email_endpoint(
+    user: RequiredUser,
+) -> SendVerificationEmailResponse:
+    """Send a verification email to the authenticated user.
+
+    Use this to resend the verification email if the original was lost.
+    Has no effect if email is already verified.
+    """
+    if user.email_verified:
+        return SendVerificationEmailResponse(
+            message="Email is already verified",
+            email_sent=False,
+        )
+
+    if not is_email_enabled():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Email service is not configured. Please contact support.",
+        )
+
+    # Create verification token
+    token = create_email_verification_token(user.id, user.email)
+    verification_url = f"{settings.frontend_url}/verify-email?token={token}"
+
+    # Send email
+    result = await send_verification_email(user.email, verification_url)
+
+    if not result.success:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Failed to send verification email. Please try again later.",
+        )
+
+    return SendVerificationEmailResponse(
+        message="Verification email sent. Please check your inbox.",
+        email_sent=True,
+    )
+
+
+@router.post(
+    "/verify-email",
+    response_model=VerifyEmailResponse,
+    summary="Verify email address",
+    responses={
+        400: {"description": "Invalid or expired token"},
+    },
+)
+async def verify_email_endpoint(
+    request: VerifyEmailRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> VerifyEmailResponse:
+    """Verify email address using the token sent via email.
+
+    This endpoint does not require authentication - the token itself
+    proves ownership of the email.
+    """
+    # Decode and validate token
+    result = decode_email_verification_token(request.token)
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired verification token",
+        )
+
+    user_id, email = result
+
+    # Get user and verify email matches
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid verification token",
+        )
+
+    # Check if email matches (prevents token reuse after email change)
+    if user.email.lower() != email.lower():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Verification token is no longer valid",
+        )
+
+    # Check if already verified
+    if user.email_verified:
+        return VerifyEmailResponse(
+            message="Email is already verified",
+            verified=True,
+        )
+
+    # Mark as verified
+    user.email_verified = True
+    await db.commit()
+
+    # Send welcome email (fire and forget)
+    await send_welcome_email(user.email)
+
+    return VerifyEmailResponse(
+        message="Email verified successfully",
+        verified=True,
+    )
