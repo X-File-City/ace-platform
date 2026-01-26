@@ -97,8 +97,16 @@ export function Settings() {
     try {
       await api.post('/auth/send-verification-email');
       setSuccess('Verification email sent! Please check your inbox.');
-    } catch {
-      setError('Failed to send verification email. Please try again.');
+    } catch (err: unknown) {
+      // Extract error message from API response
+      let message = 'Failed to send verification email. Please try again.';
+      if (err && typeof err === 'object' && 'response' in err) {
+        const response = (err as { response?: { data?: { error?: { message?: string } } } }).response;
+        if (response?.data?.error?.message) {
+          message = response.data.error.message;
+        }
+      }
+      setError(message);
     } finally {
       setSendingVerification(false);
     }
