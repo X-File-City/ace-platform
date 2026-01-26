@@ -235,3 +235,59 @@
   border-radius: var(--radius-md);
   border: 1px solid var(--border-gold);
 }
+
+.verificationStatus {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.verifiedBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.75rem;
+  background: rgba(77, 208, 175, 0.1);
+  color: var(--success);
+  border: 1px solid rgba(77, 208, 175, 0.3);
+  border-radius: 1rem;
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.unverifiedBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.75rem;
+  background: rgba(184, 134, 11, 0.08);
+  color: var(--gold-primary);
+  border: 1px solid var(--border-gold);
+  border-radius: 1rem;
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.resendButton {
+  padding: 0.375rem 0.75rem;
+  background: transparent;
+  color: var(--gold-primary);
+  border: 1px solid var(--border-gold);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.resendButton:hover:not(:disabled) {
+  background: rgba(184, 134, 11, 0.1);
+}
+
+.resendButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
