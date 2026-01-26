@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { apiKeysApi } from '../../utils/api';
+import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
@@ -16,6 +18,7 @@ import {
   Shield,
   Terminal,
   Info,
+  Mail,
 } from 'lucide-react';
 import type { ApiKey, ApiKeyCreate, ApiKeyCreateResponse } from '../../types';
 import styles from './ApiKeys.module.css';
@@ -29,11 +32,13 @@ const AVAILABLE_SCOPES = [
 ];
 
 export function ApiKeys() {
+  const { user } = useAuth();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newKey, setNewKey] = useState<ApiKeyCreateResponse | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
+  const isEmailVerified = user?.email_verified ?? false;
 
   const { data: apiKeys, isLoading, error } = useQuery({
     queryKey: ['api-keys'],
@@ -48,8 +53,14 @@ export function ApiKeys() {
       setShowCreateModal(false);
       setMutationError(null);
     },
-    onError: () => {
-      setMutationError('Failed to create API key. Please try again.');
+    onError: (err: unknown) => {
+      // Extract error message from API response
+      let message = 'Failed to create API key. Please try again.';
+      if (err && typeof err === 'object' && 'response' in err) {
+        const response = (err as { response?: { data?: { detail?: string; error?: { message?: string } } } }).response;
+        message = response?.data?.error?.message || response?.data?.detail || message;
+      }
+      setMutationError(message);
     },
   });
 
@@ -86,6 +97,17 @@ export function ApiKeys() {
           <p>API keys provide access to your account. Never share them or commit them to version control.</p>
         </div>
       </div>
+
+      {/* Email Verification Required Banner */}
+      {!isEmailVerified && (
+        <div className={styles.verificationBanner}>
+          <Mail size={20} />
+          <div>
+            <strong>Email verification required</strong>
+            <p>You must verify your email before creating API keys. <Link to="/settings">Go to Settings</Link> to resend the verification email.</p>
+          </div>
+        </div>
+      )}
 
       {/* Mutation Error */}
       {mutationError && (

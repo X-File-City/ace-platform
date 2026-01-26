@@ -62,6 +62,38 @@
   margin: 0;
 }
 
+.verificationBanner {
+  display: flex;
+  gap: var(--space-md);
+  padding: var(--space-md) var(--space-lg);
+  background: rgba(196, 30, 58, 0.08);
+  border: 1px solid rgba(196, 30, 58, 0.2);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-xl);
+  color: var(--error);
+}
+
+.verificationBanner strong {
+  display: block;
+  color: var(--text-primary);
+  margin-bottom: var(--space-xs);
+}
+
+.verificationBanner p {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.verificationBanner a {
+  color: var(--gold-primary);
+  text-decoration: underline;
+}
+
+.verificationBanner a:hover {
+  color: var(--text-primary);
+}
+
 /* Keys List */
 .keysList {
   display: flex;
