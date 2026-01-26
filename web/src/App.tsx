@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Layout } from './components/Layout/Layout';
 import { AuthPage } from './pages/Auth/AuthPage';
 import { OAuthCallback } from './pages/OAuthCallback/OAuthCallback';
+import { VerifyEmail } from './pages/VerifyEmail/VerifyEmail';
 import { Dashboard } from './pages/Dashboard/Dashboard';
 import { PlaybookDetail } from './pages/PlaybookDetail/PlaybookDetail';
 import { PlaybookContentEditor } from './pages/PlaybookContentEditor/PlaybookContentEditor';
@@ -81,6 +82,7 @@ function AppRoutes() {
         }
       />
       <Route path="/oauth/callback" element={<OAuthCallback />} />
+      <Route path="/verify-email" element={<VerifyEmail />} />
 
       {/* Billing callback routes */}
       <Route
