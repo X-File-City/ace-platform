@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { api } from '../../utils/api';
+import { useAuth } from '../../contexts/AuthContext';
 import { Logo } from '../../components/Logo';
 import styles from './VerifyEmail.module.css';
 
@@ -10,6 +11,7 @@ export function VerifyEmail() {
   const [searchParams] = useSearchParams();
   const [state, setState] = useState<VerificationState>('loading');
   const [errorMessage, setErrorMessage] = useState('');
+  const { refreshUser } = useAuth();
 
   useEffect(() => {
     const token = searchParams.get('token');
@@ -23,6 +25,8 @@ export function VerifyEmail() {
     const verifyEmail = async () => {
       try {
         await api.post('/auth/verify-email', { token });
+        // Refresh user data so verification status is updated globally
+        await refreshUser();
         setState('success');
       } catch (err: unknown) {
         setState('error');
@@ -41,7 +45,7 @@ export function VerifyEmail() {
     };
 
     verifyEmail();
-  }, [searchParams]);
+  }, [searchParams, refreshUser]);
 
   return (
     <div className={styles.container}>

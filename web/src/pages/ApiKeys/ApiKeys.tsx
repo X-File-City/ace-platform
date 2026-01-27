@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { apiKeysApi } from '../../utils/api';
@@ -32,7 +32,7 @@ const AVAILABLE_SCOPES = [
 ];
 
 export function ApiKeys() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showVerificationModal, setShowVerificationModal] = useState(false);
   const [newKey, setNewKey] = useState<ApiKeyCreateResponse | null>(null);
@@ -40,6 +40,11 @@ export function ApiKeys() {
 
   const queryClient = useQueryClient();
   const isEmailVerified = user?.email_verified ?? false;
+
+  // Refresh user data on mount to get latest verification status
+  useEffect(() => {
+    refreshUser();
+  }, [refreshUser]);
 
   const handleCreateClick = () => {
     if (!isEmailVerified) {

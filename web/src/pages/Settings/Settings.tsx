@@ -15,7 +15,12 @@ interface OAuthProviders {
 }
 
 export function Settings() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
+
+  // Refresh user data on mount to get latest verification status
+  useEffect(() => {
+    refreshUser();
+  }, [refreshUser]);
   const [linkedAccounts, setLinkedAccounts] = useState<LinkedAccounts | null>(null);
   const [providers, setProviders] = useState<OAuthProviders | null>(null);
   const [loading, setLoading] = useState(true);
