@@ -669,10 +669,18 @@
 }
 
 .emptyContent {
-  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-md);
   padding: var(--space-3xl);
   color: var(--text-secondary);
   font-style: italic;
+}
+
+.emptyContent p {
+  margin: 0;
 }
 
 /* Modal */
