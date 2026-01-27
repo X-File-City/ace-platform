@@ -92,9 +92,10 @@ class TestCheckAndTriggerEvolutions:
     @patch("ace_platform.workers.auto_evolution.check_spending_limit_sync")
     def test_playbook_with_no_outcomes(self, mock_spending_check):
         """Test playbook with no unprocessed outcomes."""
+        from decimal import Decimal
+
         from ace_platform.db.models import PlaybookStatus
         from ace_platform.workers.auto_evolution import _check_and_trigger_evolutions
-        from decimal import Decimal
 
         mock_db = MagicMock()
 
@@ -162,9 +163,10 @@ class TestCheckAndTriggerEvolutions:
     @patch("ace_platform.workers.evolution_task.process_evolution_job")
     def test_triggers_on_outcome_threshold(self, mock_process_job, mock_spending_check):
         """Test evolution triggers when outcome count meets threshold."""
+        from decimal import Decimal
+
         from ace_platform.db.models import PlaybookStatus
         from ace_platform.workers.auto_evolution import _check_and_trigger_evolutions
-        from decimal import Decimal
 
         mock_db = MagicMock()
 
@@ -205,9 +207,10 @@ class TestCheckAndTriggerEvolutions:
     @patch("ace_platform.workers.evolution_task.process_evolution_job")
     def test_triggers_on_time_threshold(self, mock_process_job, mock_spending_check):
         """Test evolution triggers when time threshold is met."""
+        from decimal import Decimal
+
         from ace_platform.db.models import EvolutionJobStatus, PlaybookStatus
         from ace_platform.workers.auto_evolution import _check_and_trigger_evolutions
-        from decimal import Decimal
 
         mock_db = MagicMock()
 
@@ -261,9 +264,10 @@ class TestCheckAndTriggerEvolutions:
     @patch("ace_platform.workers.auto_evolution.check_spending_limit_sync")
     def test_does_not_trigger_below_thresholds(self, mock_spending_check):
         """Test no trigger when both thresholds are not met."""
+        from decimal import Decimal
+
         from ace_platform.db.models import EvolutionJobStatus, PlaybookStatus
         from ace_platform.workers.auto_evolution import _check_and_trigger_evolutions
-        from decimal import Decimal
 
         mock_db = MagicMock()
 
@@ -315,9 +319,10 @@ class TestCheckAndTriggerEvolutions:
     @patch("ace_platform.workers.auto_evolution.check_spending_limit_sync")
     def test_skips_when_spending_limit_exceeded(self, mock_spending_check):
         """Test that playbook is skipped when user exceeded spending limit."""
+        from decimal import Decimal
+
         from ace_platform.db.models import PlaybookStatus
         from ace_platform.workers.auto_evolution import _check_and_trigger_evolutions
-        from decimal import Decimal
 
         mock_db = MagicMock()
 
