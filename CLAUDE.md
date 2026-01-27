@@ -255,7 +255,13 @@ For OAuth to work correctly:
 
 # Project Management
 
-This project uses the beads CLI 'bd' for issue and project tracking.
+**Important:** This project uses the beads CLI `bd` for issue and project tracking, NOT GitHub issues. Always use `bd` commands for creating, closing, and managing issues.
+
+Common bd commands:
+- `bd create` - Create a new issue
+- `bd list` - List issues
+- `bd close <issue-id>` - Close an issue
+- `bd search <query>` - Search issues
 
 1. File/update issues for remaining work
 
