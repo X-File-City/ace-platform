@@ -16,12 +16,14 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import func, select
 
 from ace_platform.config import get_settings
+from ace_platform.core.limits import SubscriptionTier, check_spending_limit_sync
 from ace_platform.db.models import (
     EvolutionJob,
     EvolutionJobStatus,
     Outcome,
     Playbook,
     PlaybookStatus,
+    User,
 )
 from ace_platform.db.session import SyncSessionLocal
 from ace_platform.workers.celery_app import celery_app
@@ -87,6 +89,7 @@ def _check_and_trigger_evolutions(
     playbooks_checked = 0
     jobs_queued = 0
     skipped_running = 0
+    skipped_spending_limit = 0
 
     # Get all active playbooks
     result = db.execute(select(Playbook).where(Playbook.status == PlaybookStatus.ACTIVE))
@@ -113,6 +116,24 @@ def _check_and_trigger_evolutions(
         if existing_job:
             skipped_running += 1
             continue
+
+        # Check user's spending limit
+        user = db.get(User, playbook.user_id)
+        if user:
+            user_tier = (
+                SubscriptionTier(user.subscription_tier)
+                if user.subscription_tier
+                else SubscriptionTier.FREE
+            )
+            within_limit, _, _ = check_spending_limit_sync(db, user.id, user_tier)
+            if not within_limit:
+                logger.debug(
+                    "Skipping auto-evolution for playbook %s: user %s exceeded spending limit",
+                    playbook.id,
+                    user.id,
+                )
+                skipped_spending_limit += 1
+                continue
 
         # Count unprocessed outcomes
         unprocessed_count = (
@@ -193,6 +214,7 @@ def _check_and_trigger_evolutions(
         "playbooks_checked": playbooks_checked,
         "jobs_queued": jobs_queued,
         "skipped_running": skipped_running,
+        "skipped_spending_limit": skipped_spending_limit,
         "thresholds": {
             "outcome_count": outcome_threshold,
             "time_hours": time_threshold_hours,

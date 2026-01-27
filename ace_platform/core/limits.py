@@ -15,12 +15,16 @@ exposed as a subscription option.
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from decimal import Decimal
 from enum import Enum
 from uuid import UUID
 
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from ace_platform.core.metering import get_user_usage_summary
+from ace_platform.db.models import UsageRecord
 
 
 class SubscriptionTier(str, Enum):
@@ -46,6 +50,7 @@ class TierLimits:
 
     # Monthly limits
     monthly_evolution_runs: int | None  # None = unlimited
+    monthly_cost_limit_usd: Decimal | None  # None = unlimited (e.g., Enterprise)
 
     # Per-account limits
     max_playbooks: int | None
@@ -57,9 +62,11 @@ class TierLimits:
 
 
 # Define limits for each tier based on BILLING_DECISIONS.md
+# Spending limits match subscription price to prevent runaway costs
 TIER_LIMITS: dict[SubscriptionTier, TierLimits] = {
     SubscriptionTier.FREE: TierLimits(
         monthly_evolution_runs=10,  # Very limited for internal/testing use
+        monthly_cost_limit_usd=Decimal("1.00"),  # Small allowance for testing
         max_playbooks=1,
         can_use_premium_models=False,
         can_export_data=False,
@@ -67,6 +74,7 @@ TIER_LIMITS: dict[SubscriptionTier, TierLimits] = {
     ),
     SubscriptionTier.STARTER: TierLimits(
         monthly_evolution_runs=100,
+        monthly_cost_limit_usd=Decimal("9.00"),  # Matches $9/month subscription
         max_playbooks=5,
         can_use_premium_models=True,
         can_export_data=True,
@@ -74,6 +82,7 @@ TIER_LIMITS: dict[SubscriptionTier, TierLimits] = {
     ),
     SubscriptionTier.PRO: TierLimits(
         monthly_evolution_runs=500,
+        monthly_cost_limit_usd=Decimal("29.00"),  # Matches $29/month subscription
         max_playbooks=20,
         can_use_premium_models=True,
         can_export_data=True,
@@ -81,6 +90,7 @@ TIER_LIMITS: dict[SubscriptionTier, TierLimits] = {
     ),
     SubscriptionTier.ULTRA: TierLimits(
         monthly_evolution_runs=2_000,
+        monthly_cost_limit_usd=Decimal("79.00"),  # Matches $79/month subscription
         max_playbooks=100,
         can_use_premium_models=True,
         can_export_data=True,
@@ -88,6 +98,7 @@ TIER_LIMITS: dict[SubscriptionTier, TierLimits] = {
     ),
     SubscriptionTier.ENTERPRISE: TierLimits(
         monthly_evolution_runs=None,  # Unlimited
+        monthly_cost_limit_usd=None,  # Unlimited
         max_playbooks=None,
         can_use_premium_models=True,
         can_export_data=True,
@@ -105,9 +116,11 @@ class UsageStatus:
 
     # Current usage (this billing period)
     current_evolution_runs: int
+    current_cost_usd: Decimal
 
     # Remaining quota (None if unlimited)
     remaining_evolution_runs: int | None
+    remaining_cost_usd: Decimal | None  # None if unlimited
 
     # Status flags
     is_within_limits: bool
@@ -160,16 +173,22 @@ async def get_user_usage_status(
     # Get current usage - total_requests represents evolution runs
     summary = await get_user_usage_summary(db, user_id, period_start, now)
 
-    # Calculate remaining quota
+    # Calculate remaining evolution runs quota
     remaining_evolution_runs = None
-
     if limits.monthly_evolution_runs is not None:
         remaining_evolution_runs = max(0, limits.monthly_evolution_runs - summary.total_requests)
+
+    # Calculate remaining cost budget
+    current_cost_usd = summary.total_cost_usd
+    remaining_cost_usd = None
+    if limits.monthly_cost_limit_usd is not None:
+        remaining_cost_usd = max(Decimal("0"), limits.monthly_cost_limit_usd - current_cost_usd)
 
     # Check if within limits
     limit_exceeded = None
     is_within_limits = True
 
+    # Check evolution runs limit
     if (
         limits.monthly_evolution_runs is not None
         and summary.total_requests >= limits.monthly_evolution_runs
@@ -177,11 +196,21 @@ async def get_user_usage_status(
         is_within_limits = False
         limit_exceeded = "monthly_evolution_runs"
 
+    # Check spending limit (takes precedence if also exceeded)
+    if (
+        limits.monthly_cost_limit_usd is not None
+        and current_cost_usd >= limits.monthly_cost_limit_usd
+    ):
+        is_within_limits = False
+        limit_exceeded = "monthly_cost_limit"
+
     return UsageStatus(
         tier=tier,
         limits=limits,
         current_evolution_runs=summary.total_requests,
+        current_cost_usd=current_cost_usd,
         remaining_evolution_runs=remaining_evolution_runs,
+        remaining_cost_usd=remaining_cost_usd,
         is_within_limits=is_within_limits,
         limit_exceeded=limit_exceeded,
     )
@@ -206,11 +235,18 @@ async def check_can_evolve(
     status = await get_user_usage_status(db, user_id, tier)
 
     if not status.is_within_limits:
-        return (
-            False,
-            f"Evolution limit reached ({status.limits.monthly_evolution_runs}/month). "
-            "Upgrade your plan for more evolutions.",
-        )
+        if status.limit_exceeded == "monthly_cost_limit":
+            return (
+                False,
+                f"Monthly spending limit reached (${status.limits.monthly_cost_limit_usd}/month). "
+                "Upgrade your plan to continue.",
+            )
+        else:
+            return (
+                False,
+                f"Evolution limit reached ({status.limits.monthly_evolution_runs}/month). "
+                "Upgrade your plan for more evolutions.",
+            )
 
     return True, None
 
@@ -254,3 +290,66 @@ def can_create_playbook(tier: SubscriptionTier, current_playbook_count: int) -> 
         return True
 
     return current_playbook_count < limits.max_playbooks
+
+
+# Sync versions for Celery workers
+
+
+def get_user_cost_sync(
+    db: Session,
+    user_id: UUID,
+    start_date: datetime,
+    end_date: datetime,
+) -> Decimal:
+    """Get total cost for a user in a time period (sync version).
+
+    Args:
+        db: Sync database session.
+        user_id: User ID to check.
+        start_date: Start of period (inclusive).
+        end_date: End of period (inclusive).
+
+    Returns:
+        Total cost in USD.
+    """
+    result = db.execute(
+        select(func.coalesce(func.sum(UsageRecord.cost_usd), Decimal("0"))).where(
+            UsageRecord.user_id == user_id,
+            UsageRecord.created_at >= start_date,
+            UsageRecord.created_at <= end_date,
+        )
+    )
+    return result.scalar() or Decimal("0")
+
+
+def check_spending_limit_sync(
+    db: Session,
+    user_id: UUID,
+    tier: SubscriptionTier = SubscriptionTier.FREE,
+) -> tuple[bool, str | None, Decimal]:
+    """Check if a user has exceeded their spending limit (sync version).
+
+    Args:
+        db: Sync database session.
+        user_id: User ID to check.
+        tier: User's subscription tier.
+
+    Returns:
+        Tuple of (within_limit, error_message, current_cost).
+        If within_limit is False, error_message contains the reason.
+    """
+    limits = get_tier_limits(tier)
+    period_start = get_billing_period_start()
+    now = datetime.now(UTC)
+
+    current_cost = get_user_cost_sync(db, user_id, period_start, now)
+
+    if limits.monthly_cost_limit_usd is not None and current_cost >= limits.monthly_cost_limit_usd:
+        return (
+            False,
+            f"Monthly spending limit reached (${limits.monthly_cost_limit_usd}/month). "
+            "Upgrade your plan to continue.",
+            current_cost,
+        )
+
+    return True, None, current_cost

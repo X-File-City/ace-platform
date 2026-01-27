@@ -89,16 +89,28 @@ class TestCheckAndTriggerEvolutions:
         assert result["playbooks_checked"] == 0
         assert result["jobs_queued"] == 0
 
-    def test_playbook_with_no_outcomes(self):
+    @patch("ace_platform.workers.auto_evolution.check_spending_limit_sync")
+    def test_playbook_with_no_outcomes(self, mock_spending_check):
         """Test playbook with no unprocessed outcomes."""
         from ace_platform.db.models import PlaybookStatus
         from ace_platform.workers.auto_evolution import _check_and_trigger_evolutions
+        from decimal import Decimal
 
         mock_db = MagicMock()
+
+        # Mock user
+        mock_user = MagicMock()
+        mock_user.id = uuid4()
+        mock_user.subscription_tier = None  # FREE tier
+        mock_db.get.return_value = mock_user
+
+        # Mock spending limit check to pass
+        mock_spending_check.return_value = (True, None, Decimal("0.50"))
 
         # Mock playbook
         mock_playbook = MagicMock()
         mock_playbook.id = uuid4()
+        mock_playbook.user_id = mock_user.id
         mock_playbook.status = PlaybookStatus.ACTIVE
         mock_playbook.current_version_id = uuid4()
 
@@ -146,17 +158,29 @@ class TestCheckAndTriggerEvolutions:
         assert result["jobs_queued"] == 0
         assert result["skipped_running"] == 1
 
+    @patch("ace_platform.workers.auto_evolution.check_spending_limit_sync")
     @patch("ace_platform.workers.evolution_task.process_evolution_job")
-    def test_triggers_on_outcome_threshold(self, mock_process_job):
+    def test_triggers_on_outcome_threshold(self, mock_process_job, mock_spending_check):
         """Test evolution triggers when outcome count meets threshold."""
         from ace_platform.db.models import PlaybookStatus
         from ace_platform.workers.auto_evolution import _check_and_trigger_evolutions
+        from decimal import Decimal
 
         mock_db = MagicMock()
+
+        # Mock user
+        mock_user = MagicMock()
+        mock_user.id = uuid4()
+        mock_user.subscription_tier = None  # FREE tier
+        mock_db.get.return_value = mock_user
+
+        # Mock spending limit check to pass
+        mock_spending_check.return_value = (True, None, Decimal("0.50"))
 
         # Mock playbook
         mock_playbook = MagicMock()
         mock_playbook.id = uuid4()
+        mock_playbook.user_id = mock_user.id
         mock_playbook.status = PlaybookStatus.ACTIVE
         mock_playbook.current_version_id = uuid4()
 
@@ -177,17 +201,29 @@ class TestCheckAndTriggerEvolutions:
         assert result["jobs_queued"] == 1
         mock_process_job.delay.assert_called_once()
 
+    @patch("ace_platform.workers.auto_evolution.check_spending_limit_sync")
     @patch("ace_platform.workers.evolution_task.process_evolution_job")
-    def test_triggers_on_time_threshold(self, mock_process_job):
+    def test_triggers_on_time_threshold(self, mock_process_job, mock_spending_check):
         """Test evolution triggers when time threshold is met."""
         from ace_platform.db.models import EvolutionJobStatus, PlaybookStatus
         from ace_platform.workers.auto_evolution import _check_and_trigger_evolutions
+        from decimal import Decimal
 
         mock_db = MagicMock()
+
+        # Mock user
+        mock_user = MagicMock()
+        mock_user.id = uuid4()
+        mock_user.subscription_tier = None  # FREE tier
+        mock_db.get.return_value = mock_user
+
+        # Mock spending limit check to pass
+        mock_spending_check.return_value = (True, None, Decimal("0.50"))
 
         # Mock playbook created 48 hours ago
         mock_playbook = MagicMock()
         mock_playbook.id = uuid4()
+        mock_playbook.user_id = mock_user.id
         mock_playbook.status = PlaybookStatus.ACTIVE
         mock_playbook.current_version_id = uuid4()
         mock_playbook.created_at = datetime.now(UTC) - timedelta(hours=48)
@@ -222,16 +258,28 @@ class TestCheckAndTriggerEvolutions:
         assert result["jobs_queued"] == 1
         mock_process_job.delay.assert_called_once()
 
-    def test_does_not_trigger_below_thresholds(self):
+    @patch("ace_platform.workers.auto_evolution.check_spending_limit_sync")
+    def test_does_not_trigger_below_thresholds(self, mock_spending_check):
         """Test no trigger when both thresholds are not met."""
         from ace_platform.db.models import EvolutionJobStatus, PlaybookStatus
         from ace_platform.workers.auto_evolution import _check_and_trigger_evolutions
+        from decimal import Decimal
 
         mock_db = MagicMock()
+
+        # Mock user
+        mock_user = MagicMock()
+        mock_user.id = uuid4()
+        mock_user.subscription_tier = None  # FREE tier
+        mock_db.get.return_value = mock_user
+
+        # Mock spending limit check to pass
+        mock_spending_check.return_value = (True, None, Decimal("0.50"))
 
         # Mock playbook
         mock_playbook = MagicMock()
         mock_playbook.id = uuid4()
+        mock_playbook.user_id = mock_user.id
         mock_playbook.status = PlaybookStatus.ACTIVE
         mock_playbook.current_version_id = uuid4()
 
@@ -263,6 +311,50 @@ class TestCheckAndTriggerEvolutions:
         )
 
         assert result["jobs_queued"] == 0
+
+    @patch("ace_platform.workers.auto_evolution.check_spending_limit_sync")
+    def test_skips_when_spending_limit_exceeded(self, mock_spending_check):
+        """Test that playbook is skipped when user exceeded spending limit."""
+        from ace_platform.db.models import PlaybookStatus
+        from ace_platform.workers.auto_evolution import _check_and_trigger_evolutions
+        from decimal import Decimal
+
+        mock_db = MagicMock()
+
+        # Mock user who exceeded spending limit
+        mock_user = MagicMock()
+        mock_user.id = uuid4()
+        mock_user.subscription_tier = None  # FREE tier
+        mock_db.get.return_value = mock_user
+
+        # Mock spending limit check to fail
+        mock_spending_check.return_value = (
+            False,
+            "Monthly spending limit reached ($1.00/month). Upgrade your plan to continue.",
+            Decimal("1.50"),
+        )
+
+        # Mock playbook
+        mock_playbook = MagicMock()
+        mock_playbook.id = uuid4()
+        mock_playbook.user_id = mock_user.id
+        mock_playbook.status = PlaybookStatus.ACTIVE
+        mock_playbook.current_version_id = uuid4()
+
+        mock_playbooks_result = MagicMock()
+        mock_playbooks_result.scalars.return_value.all.return_value = [mock_playbook]
+
+        # No existing job
+        mock_job_result = MagicMock()
+        mock_job_result.scalar_one_or_none.return_value = None
+
+        mock_db.execute.side_effect = [mock_playbooks_result, mock_job_result]
+
+        result = _check_and_trigger_evolutions(mock_db)
+
+        assert result["playbooks_checked"] == 1
+        assert result["jobs_queued"] == 0
+        assert result["skipped_spending_limit"] == 1
 
 
 class TestCheckAutoEvolutionTask:

@@ -572,6 +572,15 @@ async def trigger_evolution(
         # If Redis unavailable, allow the request
         pass
 
+    # Check spending/evolution limits
+    from ace_platform.core.limits import SubscriptionTier, check_can_evolve
+
+    # Get user's subscription tier (defaults to FREE if not set)
+    user_tier = SubscriptionTier(user.subscription_tier) if user.subscription_tier else SubscriptionTier.FREE
+    can_proceed, error_message = await check_can_evolve(db, user.id, user_tier)
+    if not can_proceed:
+        return f"Error: {error_message}"
+
     # Trigger evolution
     from ace_platform.core.evolution_jobs import trigger_evolution_async
 

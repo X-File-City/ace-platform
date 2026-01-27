@@ -5,9 +5,11 @@ These tests verify:
 2. Usage status calculation
 3. Limit checking functions
 4. Model access restrictions
+5. Spending cap enforcement
 """
 
 from datetime import UTC, datetime
+from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -113,6 +115,7 @@ class TestUsageStatus:
         # Mock usage summary - low usage
         mock_summary = MagicMock()
         mock_summary.total_requests = 5  # 5 evolution runs
+        mock_summary.total_cost_usd = Decimal("0.50")  # Under $1 limit
 
         with patch(
             "ace_platform.core.limits.get_user_usage_summary",
@@ -124,6 +127,8 @@ class TestUsageStatus:
         assert status.limit_exceeded is None
         assert status.current_evolution_runs == 5
         assert status.remaining_evolution_runs == 5  # 10 - 5
+        assert status.current_cost_usd == Decimal("0.50")
+        assert status.remaining_cost_usd == Decimal("0.50")  # $1 - $0.50
 
     @pytest.mark.asyncio
     async def test_usage_status_exceeds_limit(self):
@@ -133,6 +138,7 @@ class TestUsageStatus:
 
         mock_summary = MagicMock()
         mock_summary.total_requests = 15  # Over 10 limit for FREE tier
+        mock_summary.total_cost_usd = Decimal("0.50")  # Under cost limit
 
         with patch(
             "ace_platform.core.limits.get_user_usage_summary",
@@ -152,6 +158,7 @@ class TestUsageStatus:
 
         mock_summary = MagicMock()
         mock_summary.total_requests = 50  # 50 evolution runs used
+        mock_summary.total_cost_usd = Decimal("4.50")  # Under $9 limit
 
         with patch(
             "ace_platform.core.limits.get_user_usage_summary",
@@ -161,6 +168,7 @@ class TestUsageStatus:
 
         assert status.is_within_limits is True
         assert status.remaining_evolution_runs == 50  # 100 - 50
+        assert status.remaining_cost_usd == Decimal("4.50")  # $9 - $4.50
 
     @pytest.mark.asyncio
     async def test_enterprise_always_within_limits(self):
@@ -170,6 +178,7 @@ class TestUsageStatus:
 
         mock_summary = MagicMock()
         mock_summary.total_requests = 1_000_000  # Huge usage
+        mock_summary.total_cost_usd = Decimal("10000.00")  # Huge cost
 
         with patch(
             "ace_platform.core.limits.get_user_usage_summary",
@@ -179,6 +188,7 @@ class TestUsageStatus:
 
         assert status.is_within_limits is True
         assert status.remaining_evolution_runs is None
+        assert status.remaining_cost_usd is None  # Enterprise has no cost limit
 
 
 class TestCheckCanEvolve:
@@ -192,6 +202,7 @@ class TestCheckCanEvolve:
 
         mock_summary = MagicMock()
         mock_summary.total_requests = 5
+        mock_summary.total_cost_usd = Decimal("0.50")
 
         with patch(
             "ace_platform.core.limits.get_user_usage_summary",
@@ -204,12 +215,13 @@ class TestCheckCanEvolve:
 
     @pytest.mark.asyncio
     async def test_cannot_evolve_over_limit(self):
-        """Test evolution blocked when over limit."""
+        """Test evolution blocked when over evolution run limit."""
         user_id = uuid4()
         mock_db = AsyncMock()
 
         mock_summary = MagicMock()
         mock_summary.total_requests = 15  # Over FREE tier limit of 10
+        mock_summary.total_cost_usd = Decimal("0.50")  # Under cost limit
 
         with patch(
             "ace_platform.core.limits.get_user_usage_summary",
@@ -219,6 +231,26 @@ class TestCheckCanEvolve:
 
         assert can_proceed is False
         assert "limit reached" in error.lower()
+        assert "Upgrade" in error
+
+    @pytest.mark.asyncio
+    async def test_cannot_evolve_over_spending_limit(self):
+        """Test evolution blocked when over spending limit."""
+        user_id = uuid4()
+        mock_db = AsyncMock()
+
+        mock_summary = MagicMock()
+        mock_summary.total_requests = 5  # Under evolution run limit
+        mock_summary.total_cost_usd = Decimal("1.50")  # Over $1 cost limit for FREE tier
+
+        with patch(
+            "ace_platform.core.limits.get_user_usage_summary",
+            return_value=mock_summary,
+        ):
+            can_proceed, error = await check_can_evolve(mock_db, user_id, SubscriptionTier.FREE)
+
+        assert can_proceed is False
+        assert "spending limit" in error.lower()
         assert "Upgrade" in error
 
 
@@ -280,7 +312,9 @@ class TestDataclasses:
             tier=SubscriptionTier.STARTER,
             limits=get_tier_limits(SubscriptionTier.STARTER),
             current_evolution_runs=50,
+            current_cost_usd=Decimal("4.50"),
             remaining_evolution_runs=50,
+            remaining_cost_usd=Decimal("4.50"),
             is_within_limits=True,
             limit_exceeded=None,
         )
@@ -288,3 +322,56 @@ class TestDataclasses:
         assert status.is_within_limits is True
         assert status.current_evolution_runs == 50
         assert status.remaining_evolution_runs == 50
+        assert status.current_cost_usd == Decimal("4.50")
+        assert status.remaining_cost_usd == Decimal("4.50")
+
+
+class TestSpendingCap:
+    """Tests for spending cap functionality."""
+
+    def test_tier_cost_limits(self):
+        """Test each tier has correct cost limit."""
+        assert get_tier_limits(SubscriptionTier.FREE).monthly_cost_limit_usd == Decimal("1.00")
+        assert get_tier_limits(SubscriptionTier.STARTER).monthly_cost_limit_usd == Decimal("9.00")
+        assert get_tier_limits(SubscriptionTier.PRO).monthly_cost_limit_usd == Decimal("29.00")
+        assert get_tier_limits(SubscriptionTier.ULTRA).monthly_cost_limit_usd == Decimal("79.00")
+        assert get_tier_limits(SubscriptionTier.ENTERPRISE).monthly_cost_limit_usd is None
+
+    @pytest.mark.asyncio
+    async def test_spending_limit_exceeded_takes_precedence(self):
+        """Test spending limit takes precedence over evolution run limit."""
+        user_id = uuid4()
+        mock_db = AsyncMock()
+
+        mock_summary = MagicMock()
+        mock_summary.total_requests = 5  # Under run limit
+        mock_summary.total_cost_usd = Decimal("2.00")  # Over $1 cost limit
+
+        with patch(
+            "ace_platform.core.limits.get_user_usage_summary",
+            return_value=mock_summary,
+        ):
+            status = await get_user_usage_status(mock_db, user_id, SubscriptionTier.FREE)
+
+        assert status.is_within_limits is False
+        assert status.limit_exceeded == "monthly_cost_limit"
+
+    @pytest.mark.asyncio
+    async def test_both_limits_exceeded_returns_cost_limit(self):
+        """Test cost limit message returned when both limits exceeded."""
+        user_id = uuid4()
+        mock_db = AsyncMock()
+
+        mock_summary = MagicMock()
+        mock_summary.total_requests = 15  # Over 10 run limit
+        mock_summary.total_cost_usd = Decimal("2.00")  # Over $1 cost limit
+
+        with patch(
+            "ace_platform.core.limits.get_user_usage_summary",
+            return_value=mock_summary,
+        ):
+            status = await get_user_usage_status(mock_db, user_id, SubscriptionTier.FREE)
+
+        # Cost limit check takes precedence
+        assert status.is_within_limits is False
+        assert status.limit_exceeded == "monthly_cost_limit"
