@@ -34,11 +34,20 @@ const AVAILABLE_SCOPES = [
 export function ApiKeys() {
   const { user } = useAuth();
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
   const [newKey, setNewKey] = useState<ApiKeyCreateResponse | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
   const isEmailVerified = user?.email_verified ?? false;
+
+  const handleCreateClick = () => {
+    if (!isEmailVerified) {
+      setShowVerificationModal(true);
+    } else {
+      setShowCreateModal(true);
+    }
+  };
 
   const { data: apiKeys, isLoading, error } = useQuery({
     queryKey: ['api-keys'],
@@ -83,7 +92,7 @@ export function ApiKeys() {
           <p>Manage API keys for MCP integration and programmatic access</p>
         </div>
         <SubscriptionGate featureName="API Keys">
-          <Button icon={<Plus size={18} />} onClick={() => setShowCreateModal(true)}>
+          <Button icon={<Plus size={18} />} onClick={handleCreateClick}>
             Create API Key
           </Button>
         </SubscriptionGate>
@@ -136,7 +145,7 @@ export function ApiKeys() {
           <span>Failed to load API keys</span>
         </div>
       ) : apiKeys?.length === 0 ? (
-        <EmptyState onCreateClick={() => setShowCreateModal(true)} />
+        <EmptyState onCreateClick={handleCreateClick} />
       ) : (
         <div className={styles.keysList}>
           {apiKeys?.map((key) => (
@@ -162,6 +171,11 @@ export function ApiKeys() {
       {/* New Key Display Modal */}
       {newKey && (
         <NewKeyModal apiKey={newKey} onClose={() => setNewKey(null)} />
+      )}
+
+      {/* Verification Required Modal */}
+      {showVerificationModal && (
+        <VerificationRequiredModal onClose={() => setShowVerificationModal(false)} />
       )}
     </div>
   );
@@ -522,6 +536,35 @@ Store the API key in the ACE_API_KEY environment variable for security.`;
         <Button onClick={onClose} className={styles.doneButton}>
           Done
         </Button>
+      </div>
+    </div>
+  );
+}
+
+function VerificationRequiredModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div className={styles.modalOverlay} onClick={onClose}>
+      <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+        <div className={styles.verificationModalHeader}>
+          <div className={styles.verificationModalIcon}>
+            <Mail size={24} />
+          </div>
+          <h2>Email Verification Required</h2>
+        </div>
+        <p className={styles.verificationModalMessage}>
+          You need to verify your email address before you can create API keys.
+          This helps us keep your account secure.
+        </p>
+        <div className={styles.verificationModalActions}>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Link to="/settings">
+            <Button>
+              Go to Settings
+            </Button>
+          </Link>
+        </div>
       </div>
     </div>
   );

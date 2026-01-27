@@ -681,3 +681,45 @@
   color: var(--accent-primary);
   margin-top: 2px;
 }
+
+/* Verification Required Modal */
+.verificationModalHeader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-md);
+  margin-bottom: var(--space-lg);
+}
+
+.verificationModalHeader h2 {
+  margin: 0;
+  text-align: center;
+}
+
+.verificationModalIcon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(196, 30, 58, 0.08);
+  border-radius: 50%;
+  color: var(--error);
+}
+
+.verificationModalMessage {
+  text-align: center;
+  color: var(--text-secondary);
+  margin: 0 0 var(--space-xl) 0;
+  line-height: 1.5;
+}
+
+.verificationModalActions {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-sm);
+}
+
+.verificationModalActions a {
+  text-decoration: none;
+}
