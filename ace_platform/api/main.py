@@ -18,7 +18,6 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
-from fastmcp_mount import MountFastMCP
 from starlette.middleware.sessions import SessionMiddleware
 
 from ace_platform.config import get_settings
@@ -383,7 +382,7 @@ def _register_routes(app: FastAPI) -> None:
     from ace_platform.mcp.server import mcp as mcp_server
 
     mcp_sse_app = mcp_server.sse_app()
-    app.mount("/mcp", app=MountFastMCP(app=mcp_sse_app), name="mcp")
+    app.mount("/mcp", app=mcp_sse_app, name="mcp")
 
     @app.get("/health", tags=["Health"])
     async def health_check():
