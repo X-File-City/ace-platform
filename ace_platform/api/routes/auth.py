@@ -36,6 +36,9 @@ from ace_platform.core.audit import (
     audit_login_success,
     audit_password_reset_complete,
     audit_password_reset_request,
+    get_client_ip,
+    get_user_agent,
+    is_new_ip_for_user,
 )
 from ace_platform.core.email import (
     PASSWORD_RESET_TOKEN_EXPIRE_HOURS,
@@ -44,6 +47,7 @@ from ace_platform.core.email import (
     generate_password_reset_token,
     hash_password_reset_token,
     is_email_enabled,
+    send_new_login_alert,
     send_password_reset_email,
     send_verification_email,
     send_welcome_email,
@@ -361,9 +365,31 @@ async def login(
     # Reset lockout counters on successful login
     await reset_login_lockout(http_request, request.email)
 
+    # Check if this is a new IP BEFORE logging (to avoid race condition)
+    client_ip = get_client_ip(http_request)
+    should_send_alert = False
+    if client_ip:
+        is_new_ip = await is_new_ip_for_user(db, user.id, client_ip)
+        # Only alert if IP is new AND user has logged in before (not first-ever login)
+        if is_new_ip:
+            # Check if user has any previous logins at all
+            from ace_platform.core.audit import has_previous_logins
+
+            has_logins = await has_previous_logins(db, user.id)
+            should_send_alert = has_logins
+
     # Audit log the successful login
     await audit_login_success(db, user.id, http_request, method="password")
     await db.commit()
+
+    # Send notification after commit if needed
+    if should_send_alert:
+        await send_new_login_alert(
+            to_email=user.email,
+            ip_address=client_ip,
+            login_time=datetime.now(UTC),
+            user_agent=get_user_agent(http_request),
+        )
 
     return create_tokens(user.id)
 

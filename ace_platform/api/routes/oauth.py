@@ -15,6 +15,7 @@ The frontend should:
 """
 
 import logging
+from datetime import UTC, datetime
 from typing import Annotated
 from urllib.parse import urlencode
 
@@ -34,7 +35,11 @@ from ace_platform.core.audit import (
     audit_oauth_account_unlinked,
     audit_oauth_login_failure,
     audit_oauth_login_success,
+    get_client_ip,
+    get_user_agent,
+    is_new_ip_for_user,
 )
+from ace_platform.core.email import send_new_login_alert
 from ace_platform.core.oauth import (
     is_github_oauth_enabled,
     is_google_oauth_enabled,
@@ -226,9 +231,28 @@ async def google_callback(
         await db.commit()
         return _oauth_error_redirect("Account is disabled")
 
+    # Check if this is a new IP BEFORE logging (to avoid race condition)
+    # Only for existing users (not new signups)
+    should_send_alert = False
+    client_ip = None
+    if not is_new:
+        client_ip = get_client_ip(request)
+        if client_ip:
+            is_new_ip = await is_new_ip_for_user(db, user.id, client_ip)
+            should_send_alert = is_new_ip
+
     # Audit log the successful OAuth login
     await audit_oauth_login_success(db, user.id, request, provider="google", is_new_user=is_new)
     await db.commit()
+
+    # Send notification after commit if needed
+    if should_send_alert:
+        await send_new_login_alert(
+            to_email=user.email,
+            ip_address=client_ip,
+            login_time=datetime.now(UTC),
+            user_agent=get_user_agent(request),
+        )
 
     # Create JWT tokens
     access_token = create_access_token(user.id)
@@ -342,9 +366,28 @@ async def github_callback(
         await db.commit()
         return _oauth_error_redirect("Account is disabled")
 
+    # Check if this is a new IP BEFORE logging (to avoid race condition)
+    # Only for existing users (not new signups)
+    should_send_alert = False
+    client_ip = None
+    if not is_new:
+        client_ip = get_client_ip(request)
+        if client_ip:
+            is_new_ip = await is_new_ip_for_user(db, user.id, client_ip)
+            should_send_alert = is_new_ip
+
     # Audit log the successful OAuth login
     await audit_oauth_login_success(db, user.id, request, provider="github", is_new_user=is_new)
     await db.commit()
+
+    # Send notification after commit if needed
+    if should_send_alert:
+        await send_new_login_alert(
+            to_email=user.email,
+            ip_address=client_ip,
+            login_time=datetime.now(UTC),
+            user_agent=get_user_agent(request),
+        )
 
     # Create JWT tokens
     access_token = create_access_token(user.id)
