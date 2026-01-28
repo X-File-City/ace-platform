@@ -4,18 +4,25 @@ This module contains middleware for:
 - Correlation ID generation and propagation
 - Request timing
 - Security headers
+- CSRF protection
 - Logging
 """
 
 import logging
+import secrets
 import time
 import uuid
 from collections.abc import Callable
 from contextvars import ContextVar
 
-from fastapi import Request, Response
+from fastapi import HTTPException, Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
+
+# CSRF token configuration
+CSRF_TOKEN_LENGTH = 32
+CSRF_TOKEN_HEADER = "X-CSRF-Token"
+CSRF_TOKEN_SESSION_KEY = "_csrf_token"
 
 # Context variable for correlation ID - accessible anywhere in the request context
 correlation_id_ctx: ContextVar[str | None] = ContextVar("correlation_id", default=None)
@@ -49,6 +56,127 @@ def generate_correlation_id() -> str:
         A new UUID string for use as a correlation ID.
     """
     return str(uuid.uuid4())
+
+
+def generate_csrf_token() -> str:
+    """Generate a cryptographically secure CSRF token.
+
+    Returns:
+        A URL-safe random token string.
+    """
+    return secrets.token_urlsafe(CSRF_TOKEN_LENGTH)
+
+
+def get_csrf_token_from_session(request: Request) -> str | None:
+    """Get the CSRF token from the session.
+
+    Args:
+        request: The incoming request with session.
+
+    Returns:
+        The CSRF token if present, None otherwise.
+    """
+    if not hasattr(request, "session"):
+        return None
+    return request.session.get(CSRF_TOKEN_SESSION_KEY)
+
+
+def ensure_csrf_token(request: Request) -> str:
+    """Ensure a CSRF token exists in the session, creating one if needed.
+
+    Args:
+        request: The incoming request with session.
+
+    Returns:
+        The existing or newly created CSRF token.
+    """
+    token = get_csrf_token_from_session(request)
+    if not token:
+        token = generate_csrf_token()
+        request.session[CSRF_TOKEN_SESSION_KEY] = token
+    return token
+
+
+def validate_csrf_token_value(
+    request: Request,
+    provided_token: str | None,
+    *,
+    consume_token: bool = False,
+    error_detail_missing_session: str = "CSRF token missing from session. Please refresh and try again.",
+    error_detail_missing_token: str = "CSRF token missing from request.",
+    error_detail_mismatch: str = "CSRF token validation failed.",
+) -> None:
+    """Validate a provided CSRF token against the session token.
+
+    This is the core CSRF validation function. It can be used for different
+    token sources (headers, query params, form data) by passing the token value.
+
+    Args:
+        request: The incoming request with session.
+        provided_token: The CSRF token provided by the client.
+        consume_token: If True, delete the token from session after validation (single-use).
+        error_detail_missing_session: Custom error message when no token in session.
+        error_detail_missing_token: Custom error message when no token provided.
+        error_detail_mismatch: Custom error message when tokens don't match.
+
+    Raises:
+        HTTPException: If CSRF validation fails.
+    """
+    session_token = get_csrf_token_from_session(request)
+    if not session_token:
+        logger.warning(
+            "CSRF validation failed: no token in session",
+            extra={"correlation_id": get_correlation_id()},
+        )
+        raise HTTPException(
+            status_code=403,
+            detail=error_detail_missing_session,
+        )
+
+    if not provided_token:
+        logger.warning(
+            "CSRF validation failed: no token provided",
+            extra={"correlation_id": get_correlation_id()},
+        )
+        raise HTTPException(
+            status_code=403,
+            detail=error_detail_missing_token,
+        )
+
+    # Use constant-time comparison to prevent timing attacks
+    if not secrets.compare_digest(session_token, provided_token):
+        logger.warning(
+            "CSRF validation failed: token mismatch",
+            extra={"correlation_id": get_correlation_id()},
+        )
+        raise HTTPException(
+            status_code=403,
+            detail=error_detail_mismatch,
+        )
+
+    # Optionally consume the token (for single-use scenarios like OAuth)
+    if consume_token:
+        del request.session[CSRF_TOKEN_SESSION_KEY]
+
+
+async def validate_csrf_token(request: Request) -> None:
+    """Validate the CSRF token from the request header matches the session.
+
+    This should be called on state-changing operations that use session-based auth.
+    For OAuth flows that need single-use tokens, use validate_csrf_token_value directly.
+
+    Args:
+        request: The incoming request.
+
+    Raises:
+        HTTPException: If CSRF validation fails.
+    """
+    header_token = request.headers.get(CSRF_TOKEN_HEADER)
+    validate_csrf_token_value(
+        request,
+        header_token,
+        error_detail_missing_token="CSRF token missing from request header.",
+    )
 
 
 class CorrelationIdMiddleware(BaseHTTPMiddleware):

@@ -2,22 +2,33 @@
 
 This module provides REST API endpoints for:
 - Provider discovery (GET /auth/oauth/providers)
+- CSRF token generation (GET /auth/oauth/csrf-token)
 - Google OAuth flow (GET /auth/oauth/google/login, /auth/oauth/google/callback)
 - GitHub OAuth flow (GET /auth/oauth/github/login, /auth/oauth/github/callback)
 - Account linking (GET /auth/oauth/accounts, DELETE /auth/oauth/accounts/{provider})
+
+CSRF Protection:
+OAuth login endpoints require a valid CSRF token to prevent login CSRF attacks.
+The frontend should:
+1. Call GET /auth/oauth/csrf-token to get a token
+2. Include the token as ?csrf_token=xxx when redirecting to login
 """
 
 import logging
 from typing import Annotated
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ace_platform.api.auth import RequiredUser
 from ace_platform.api.deps import get_db
+from ace_platform.api.middleware import (
+    ensure_csrf_token,
+    validate_csrf_token_value,
+)
 from ace_platform.config import get_settings
 from ace_platform.core.oauth import (
     is_github_oauth_enabled,
@@ -60,6 +71,57 @@ class MessageResponse(BaseModel):
     message: str
 
 
+class CSRFTokenResponse(BaseModel):
+    """Response containing CSRF token for OAuth flows."""
+
+    csrf_token: str
+
+
+# =============================================================================
+# CSRF Token
+# =============================================================================
+
+
+def _validate_oauth_csrf_token(request: Request, csrf_token: str | None) -> None:
+    """Validate CSRF token for OAuth login endpoints.
+
+    Uses the shared CSRF validation with OAuth-specific error messages and
+    single-use token behavior (token is consumed after validation).
+
+    Args:
+        request: The incoming request with session.
+        csrf_token: The CSRF token from query parameter.
+
+    Raises:
+        HTTPException: If CSRF validation fails.
+    """
+    validate_csrf_token_value(
+        request,
+        csrf_token,
+        consume_token=True,  # OAuth tokens are single-use
+        error_detail_missing_session="CSRF token missing from session. Please get a token first via /auth/oauth/csrf-token",
+        error_detail_missing_token="CSRF token required. Include ?csrf_token=xxx in the OAuth login URL.",
+        error_detail_mismatch="CSRF token validation failed. Please get a fresh token and try again.",
+    )
+
+
+@router.get("/csrf-token", response_model=CSRFTokenResponse)
+async def get_csrf_token(request: Request) -> CSRFTokenResponse:
+    """Get a CSRF token for OAuth login.
+
+    This endpoint generates a CSRF token and stores it in the session.
+    The frontend should call this before initiating OAuth login, then
+    include the token in the login URL as a query parameter.
+
+    The token is single-use - after OAuth login validation, it is invalidated.
+
+    Returns:
+        CSRFTokenResponse with the CSRF token.
+    """
+    token = ensure_csrf_token(request)
+    return CSRFTokenResponse(csrf_token=token)
+
+
 # =============================================================================
 # Provider Discovery
 # =============================================================================
@@ -83,13 +145,23 @@ async def get_oauth_providers() -> OAuthProvidersResponse:
 
 
 @router.get("/google/login")
-async def google_login(request: Request, _: RateLimitOAuth):
+async def google_login(
+    request: Request,
+    _: RateLimitOAuth,
+    csrf_token: Annotated[str | None, Query(description="CSRF token from /csrf-token")] = None,
+):
     """Initiate Google OAuth login flow.
+
+    Requires a valid CSRF token to prevent login CSRF attacks.
+    Get a token from GET /auth/oauth/csrf-token first.
 
     Redirects the user to Google's OAuth consent screen.
     """
     if not is_google_oauth_enabled():
         raise HTTPException(status_code=400, detail="Google OAuth not configured")
+
+    # Validate CSRF token
+    _validate_oauth_csrf_token(request, csrf_token)
 
     redirect_uri = f"{settings.oauth_redirect_base_url}/auth/oauth/google/callback"
     return await oauth.google.authorize_redirect(request, redirect_uri)
@@ -151,13 +223,23 @@ async def google_callback(
 
 
 @router.get("/github/login")
-async def github_login(request: Request, _: RateLimitOAuth):
+async def github_login(
+    request: Request,
+    _: RateLimitOAuth,
+    csrf_token: Annotated[str | None, Query(description="CSRF token from /csrf-token")] = None,
+):
     """Initiate GitHub OAuth login flow.
+
+    Requires a valid CSRF token to prevent login CSRF attacks.
+    Get a token from GET /auth/oauth/csrf-token first.
 
     Redirects the user to GitHub's OAuth consent screen.
     """
     if not is_github_oauth_enabled():
         raise HTTPException(status_code=400, detail="GitHub OAuth not configured")
+
+    # Validate CSRF token
+    _validate_oauth_csrf_token(request, csrf_token)
 
     redirect_uri = f"{settings.oauth_redirect_base_url}/auth/oauth/github/callback"
     return await oauth.github.authorize_redirect(request, redirect_uri)

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { api } from '../../utils/api';
+import { api, authApi } from '../../utils/api';
 import styles from './OAuthButtons.module.css';
 
 interface OAuthProviders {
@@ -10,6 +10,8 @@ interface OAuthProviders {
 export function OAuthButtons() {
   const [providers, setProviders] = useState<OAuthProviders | null>(null);
   const [loading, setLoading] = useState(true);
+  const [oauthLoading, setOauthLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchProviders = async () => {
@@ -30,10 +32,23 @@ export function OAuthButtons() {
     return null;
   }
 
-  const handleOAuthLogin = (provider: 'google' | 'github') => {
-    // Get API base URL from environment or default
-    const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-    window.location.href = `${apiBaseUrl}/auth/oauth/${provider}/login`;
+  const handleOAuthLogin = async (provider: 'google' | 'github') => {
+    if (oauthLoading) return;
+
+    setOauthLoading(true);
+    setError(null);
+    try {
+      // Get CSRF token first
+      const csrfToken = await authApi.getOAuthCsrfToken();
+
+      // Redirect with CSRF token
+      const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      window.location.href = `${apiBaseUrl}/auth/oauth/${provider}/login?csrf_token=${encodeURIComponent(csrfToken)}`;
+    } catch (err) {
+      console.error('Failed to initiate OAuth login:', err);
+      setError('Failed to connect. Please try again.');
+      setOauthLoading(false);
+    }
   };
 
   return (
@@ -42,15 +57,18 @@ export function OAuthButtons() {
         <span>or continue with</span>
       </div>
 
+      {error && <div className={styles.error}>{error}</div>}
+
       <div className={styles.buttons}>
         {providers.google && (
           <button
             type="button"
             className={styles.oauthButton}
             onClick={() => handleOAuthLogin('google')}
+            disabled={oauthLoading}
           >
             <GoogleIcon />
-            <span>Google</span>
+            <span>{oauthLoading ? 'Connecting...' : 'Google'}</span>
           </button>
         )}
 
@@ -59,9 +77,10 @@ export function OAuthButtons() {
             type="button"
             className={styles.oauthButton}
             onClick={() => handleOAuthLogin('github')}
+            disabled={oauthLoading}
           >
             <GitHubIcon />
-            <span>GitHub</span>
+            <span>{oauthLoading ? 'Connecting...' : 'GitHub'}</span>
           </button>
         )}
       </div>
