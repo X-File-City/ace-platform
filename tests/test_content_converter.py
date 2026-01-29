@@ -237,6 +237,22 @@ class TestFormatBulletsOutput:
         assert "[unknown]" in output
         assert "helpful=0 harmful=0" in output
 
+    def test_strips_duplicate_bullet_formatting_from_content(self):
+        """Test that duplicate bullet formatting is stripped from content."""
+        # LLM might accidentally include full bullet format in content field
+        bullets = [
+            {
+                "slug": "test-slug",
+                "content": "[test-slug] helpful=0 harmful=0 :: Actual instruction.",
+            }
+        ]
+        output = format_bullets_output(bullets)
+
+        # Should only have one instance of the bullet format
+        assert output.count("[test-slug]") == 1
+        assert output.count("helpful=0 harmful=0") == 1
+        assert "Actual instruction." in output
+
 
 class TestConversionResult:
     """Tests for ConversionResult dataclass."""

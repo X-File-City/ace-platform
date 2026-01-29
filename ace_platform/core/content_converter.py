@@ -262,6 +262,11 @@ Return a JSON object with this structure:
     "discarded_reasons": ["Not actionable - just a description", "Duplicate of another bullet", "Too vague"]
 }}
 
+IMPORTANT:
+- "slug" should be ONLY the kebab-case identifier (e.g., "venv-activation")
+- "content" should be ONLY the instruction text (e.g., "Always activate the virtual environment before running Python commands.")
+- Do NOT include [slug], helpful=, harmful=, or :: in the slug or content fields - those are added automatically
+
 Return ONLY the JSON object, no other text."""
 
 
@@ -276,9 +281,15 @@ def format_bullets_output(bullets: list[dict[str, str]]) -> str:
     """
     lines = ["## INSTRUCTIONS\n"]
 
+    # Pattern to strip any accidentally included bullet formatting from content
+    bullet_prefix_pattern = re.compile(r"^\[[^\]]+\]\s*helpful=\d+\s*harmful=\d+\s*::\s*")
+
     for bullet in bullets:
         slug = bullet.get("slug", "unknown")
         content = bullet.get("content", "")
+
+        # Strip any duplicate bullet formatting from content (defensive)
+        content = bullet_prefix_pattern.sub("", content)
 
         # Clean up the slug - ensure lowercase, hyphens only
         slug = re.sub(r"[^a-z0-9-]", "-", slug.lower())
