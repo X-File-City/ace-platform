@@ -128,7 +128,7 @@ Outcomes → Reflector → Insights → Curator → New Version
 Evolution happens:
 
 - **Automatically** - After threshold outcomes are recorded (default: 5)
-- **Manually** - When you trigger it from the dashboard or API
+- **Manually** - When you trigger it from the dashboard or MCP
 
 ### Evolution Status
 
@@ -141,7 +141,7 @@ Evolution happens:
 
 ## API Keys
 
-**API keys** authenticate your requests to ACE.
+**API keys** authenticate your MCP tool access to ACE.
 
 ### Scopes
 
@@ -207,7 +207,7 @@ Monitor your usage in the dashboard:
 - Playbook count
 - Evolution count this month
 - Outcome recordings
-- API calls
+- MCP tool calls
 
 ## Next Steps
 

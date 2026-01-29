@@ -4,24 +4,12 @@ sidebar_position: 4
 
 # Building Custom Agents
 
-Integrate ACE into your own AI agents using the MCP protocol or REST API.
+Integrate ACE into your own AI agents using the MCP protocol.
 
 ## Overview
 
-You can connect to ACE in two ways:
-
-1. **MCP Protocol** - Standard protocol for AI tool integration
-2. **REST API** - Direct HTTP requests
-
-Choose MCP for:
-- Building MCP-compatible agents
-- Standardized tool interfaces
-- Framework integrations
-
-Choose REST API for:
-- Simple integrations
-- Non-MCP environments
-- Maximum control
+ACE exposes its capabilities through MCP tools, which gives you a standardized
+interface for listing playbooks, fetching content, and recording outcomes.
 
 ## MCP Integration
 
@@ -134,189 +122,9 @@ async function main() {
 main();
 ```
 
-## REST API Integration
-
-### Python with requests
-
-```python
-import requests
-
-class AceClient:
-    def __init__(self, api_key: str, base_url: str = "https://aceagent.io"):
-        self.base_url = base_url
-        self.headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
-
-    def list_playbooks(self):
-        """List all playbooks."""
-        response = requests.get(
-            f"{self.base_url}/api/playbooks",
-            headers=self.headers
-        )
-        response.raise_for_status()
-        return response.json()
-
-    def get_playbook(self, playbook_id: str, version: int = None):
-        """Get playbook content."""
-        url = f"{self.base_url}/api/playbooks/{playbook_id}"
-        params = {"version": version} if version else {}
-
-        response = requests.get(url, headers=self.headers, params=params)
-        response.raise_for_status()
-        return response.json()
-
-    def record_outcome(
-        self,
-        playbook_id: str,
-        task_description: str,
-        outcome: str,
-        notes: str = None,
-        reasoning_trace: str = None
-    ):
-        """Record a task outcome."""
-        data = {
-            "playbook_id": playbook_id,
-            "task_description": task_description,
-            "outcome": outcome
-        }
-        if notes:
-            data["notes"] = notes
-        if reasoning_trace:
-            data["reasoning_trace"] = reasoning_trace
-
-        response = requests.post(
-            f"{self.base_url}/api/outcomes",
-            headers=self.headers,
-            json=data
-        )
-        response.raise_for_status()
-        return response.json()
-
-    def trigger_evolution(self, playbook_id: str):
-        """Trigger playbook evolution."""
-        response = requests.post(
-            f"{self.base_url}/api/playbooks/{playbook_id}/evolve",
-            headers=self.headers
-        )
-        response.raise_for_status()
-        return response.json()
-
-    def get_evolution_status(self, job_id: str):
-        """Check evolution job status."""
-        response = requests.get(
-            f"{self.base_url}/api/evolution/{job_id}/status",
-            headers=self.headers
-        )
-        response.raise_for_status()
-        return response.json()
-
-
-# Usage
-client = AceClient(api_key="your_api_key")
-
-# Get playbook
-playbook = client.get_playbook("abc-123")
-print(playbook["content"])
-
-# Use playbook for task...
-
-# Record outcome
-client.record_outcome(
-    playbook_id="abc-123",
-    task_description="Analyzed dataset",
-    outcome="success",
-    notes="Found 3 key insights"
-)
-```
-
-### TypeScript with fetch
-
-```typescript
-class AceClient {
-  private baseUrl: string;
-  private headers: HeadersInit;
-
-  constructor(apiKey: string, baseUrl = "https://aceagent.io") {
-    this.baseUrl = baseUrl;
-    this.headers = {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    };
-  }
-
-  async listPlaybooks() {
-    const response = await fetch(`${this.baseUrl}/api/playbooks`, {
-      headers: this.headers,
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return response.json();
-  }
-
-  async getPlaybook(playbookId: string, version?: number) {
-    const url = new URL(`${this.baseUrl}/api/playbooks/${playbookId}`);
-    if (version) url.searchParams.set("version", String(version));
-
-    const response = await fetch(url.toString(), {
-      headers: this.headers,
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return response.json();
-  }
-
-  async recordOutcome(params: {
-    playbookId: string;
-    taskDescription: string;
-    outcome: "success" | "partial" | "failure";
-    notes?: string;
-    reasoningTrace?: string;
-  }) {
-    const response = await fetch(`${this.baseUrl}/api/outcomes`, {
-      method: "POST",
-      headers: this.headers,
-      body: JSON.stringify({
-        playbook_id: params.playbookId,
-        task_description: params.taskDescription,
-        outcome: params.outcome,
-        notes: params.notes,
-        reasoning_trace: params.reasoningTrace,
-      }),
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return response.json();
-  }
-
-  async triggerEvolution(playbookId: string) {
-    const response = await fetch(
-      `${this.baseUrl}/api/playbooks/${playbookId}/evolve`,
-      {
-        method: "POST",
-        headers: this.headers,
-      }
-    );
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return response.json();
-  }
-}
-
-// Usage
-const client = new AceClient(process.env.ACE_API_KEY!);
-
-const playbook = await client.getPlaybook("abc-123");
-console.log(playbook.content);
-
-await client.recordOutcome({
-  playbookId: "abc-123",
-  taskDescription: "Generated report",
-  outcome: "success",
-  notes: "Report was well-structured",
-});
-```
-
 ## Agent Architecture Pattern
 
-Here's a recommended pattern for ACE-integrated agents:
+Here's a recommended pattern for ACE-integrated agents using MCP tools:
 
 ```python
 from typing import Optional
@@ -330,8 +138,8 @@ class TaskResult:
     error: Optional[str] = None
 
 class AceAgent:
-    def __init__(self, ace_client: AceClient, llm_client):
-        self.ace = ace_client
+    def __init__(self, mcp_session, llm_client):
+        self.mcp = mcp_session
         self.llm = llm_client
 
     async def execute_task(
@@ -339,40 +147,50 @@ class AceAgent:
         task: str,
         playbook_id: str
     ) -> TaskResult:
-        # 1. Fetch playbook
-        playbook = self.ace.get_playbook(playbook_id)
+        # 1. Fetch playbook via MCP tool
+        playbook_result = await self.mcp.call_tool(
+            "get_playbook",
+            {"playbook_id": playbook_id}
+        )
+        playbook_content = playbook_result.content
 
         # 2. Execute task with LLM using playbook as instructions
-        prompt = f"""
+        prompt = f\"\"\"
         Follow these instructions:
 
-        {playbook['content']}
+        {playbook_content}
 
         Task: {task}
-        """
+        \"\"\"
 
         try:
             # Your LLM execution here
             result = await self.llm.generate(prompt)
 
-            # 3. Record outcome
-            self.ace.record_outcome(
-                playbook_id=playbook_id,
-                task_description=task,
-                outcome="success",
-                notes=f"Generated output of {len(result)} characters",
-                reasoning_trace=result[:1000]  # First 1000 chars
+            # 3. Record outcome via MCP tool
+            await self.mcp.call_tool(
+                "record_outcome",
+                {
+                    "playbook_id": playbook_id,
+                    "task_description": task,
+                    "outcome": "success",
+                    "notes": f"Generated output of {len(result)} characters",
+                    "reasoning_trace": result[:1000],
+                },
             )
 
             return TaskResult(success=True, output=result)
 
         except Exception as e:
             # Record failure
-            self.ace.record_outcome(
-                playbook_id=playbook_id,
-                task_description=task,
-                outcome="failure",
-                notes=str(e)
+            await self.mcp.call_tool(
+                "record_outcome",
+                {
+                    "playbook_id": playbook_id,
+                    "task_description": task,
+                    "outcome": "failure",
+                    "notes": str(e),
+                },
             )
 
             return TaskResult(success=False, output="", error=str(e))
@@ -380,48 +198,19 @@ class AceAgent:
 
 ## Error Handling
 
-Handle common error scenarios:
+Handle common MCP tool failures with retries and backoff:
 
 ```python
-import requests
 from time import sleep
 
-class AceClientWithRetry(AceClient):
-    def _request(self, method, url, **kwargs):
-        max_retries = 3
-
-        for attempt in range(max_retries):
-            try:
-                response = requests.request(
-                    method,
-                    url,
-                    headers=self.headers,
-                    **kwargs
-                )
-
-                if response.status_code == 429:
-                    # Rate limited
-                    retry_after = int(response.headers.get("Retry-After", 60))
-                    sleep(retry_after)
-                    continue
-
-                response.raise_for_status()
-                return response.json()
-
-            except requests.exceptions.ConnectionError:
-                if attempt < max_retries - 1:
-                    sleep(2 ** attempt)  # Exponential backoff
-                    continue
+async def call_tool_with_retry(session, name, args, max_retries=3):
+    for attempt in range(max_retries):
+        try:
+            return await session.call_tool(name, args)
+        except Exception as e:
+            if attempt == max_retries - 1:
                 raise
-
-            except requests.exceptions.HTTPError as e:
-                if e.response.status_code == 401:
-                    raise AuthenticationError("Invalid API key")
-                elif e.response.status_code == 403:
-                    raise PermissionError("Insufficient scopes")
-                elif e.response.status_code == 404:
-                    raise NotFoundError("Resource not found")
-                raise
+            sleep(2 ** attempt)
 ```
 
 ## Caching Playbooks
@@ -429,16 +218,14 @@ class AceClientWithRetry(AceClient):
 For high-throughput agents, cache playbooks:
 
 ```python
-from functools import lru_cache
 from datetime import datetime, timedelta
 
-class CachedAceClient(AceClient):
-    def __init__(self, *args, cache_ttl: int = 300, **kwargs):
-        super().__init__(*args, **kwargs)
+class PlaybookCache:
+    def __init__(self, cache_ttl: int = 300):
         self._cache = {}
         self._cache_ttl = timedelta(seconds=cache_ttl)
 
-    def get_playbook(self, playbook_id: str, version: int = None):
+    async def get_playbook(self, session, playbook_id: str, version: int | None = None):
         cache_key = f"{playbook_id}:{version}"
 
         if cache_key in self._cache:
@@ -446,7 +233,10 @@ class CachedAceClient(AceClient):
             if datetime.now() - timestamp < self._cache_ttl:
                 return cached
 
-        result = super().get_playbook(playbook_id, version)
+        result = await session.call_tool(
+            "get_playbook",
+            {"playbook_id": playbook_id, "version": version},
+        )
         self._cache[cache_key] = (result, datetime.now())
         return result
 ```
@@ -461,46 +251,30 @@ import time
 
 logger = logging.getLogger(__name__)
 
-class ObservableAceClient(AceClient):
-    def get_playbook(self, playbook_id: str, version: int = None):
-        start = time.time()
-        try:
-            result = super().get_playbook(playbook_id, version)
-            logger.info(
-                "get_playbook",
-                extra={
-                    "playbook_id": playbook_id,
-                    "version": version,
-                    "duration_ms": (time.time() - start) * 1000
-                }
-            )
-            return result
-        except Exception as e:
-            logger.error(
-                "get_playbook_failed",
-                extra={
-                    "playbook_id": playbook_id,
-                    "error": str(e)
-                }
-            )
-            raise
-
-    def record_outcome(self, *args, **kwargs):
-        start = time.time()
-        result = super().record_outcome(*args, **kwargs)
+async def timed_call(session, tool_name, args):
+    start = time.time()
+    try:
+        result = await session.call_tool(tool_name, args)
         logger.info(
-            "outcome_recorded",
+            "mcp_tool_call",
             extra={
-                "playbook_id": kwargs.get("playbook_id"),
-                "outcome": kwargs.get("outcome"),
-                "duration_ms": (time.time() - start) * 1000
-            }
+                "tool": tool_name,
+                "duration_ms": (time.time() - start) * 1000,
+            },
         )
         return result
+    except Exception as e:
+        logger.error(
+            "mcp_tool_call_failed",
+            extra={
+                "tool": tool_name,
+                "error": str(e),
+            },
+        )
+        raise
 ```
 
 ## Next Steps
 
-- [API reference](/docs/api-reference/overview)
 - [Recording effective outcomes](/docs/developer-guides/recording-outcomes)
 - [Understanding evolution](/docs/user-guides/understanding-evolution)

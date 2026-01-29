@@ -4,11 +4,11 @@ sidebar_position: 3
 
 # Managing API Keys
 
-Create and manage API keys to authenticate with ACE.
+Create and manage API keys to authenticate MCP tool access with ACE.
 
 ## Overview
 
-API keys authenticate your requests to ACE. Each key has specific scopes that control what actions it can perform.
+API keys authenticate your MCP tool requests to ACE. Each key has specific scopes that control what actions it can perform.
 
 ## Creating API Keys
 
@@ -56,15 +56,6 @@ API keys authenticate your requests to ACE. Each key has specific scopes that co
 
 ## Using API Keys
 
-### HTTP Header
-
-Include the key in the `Authorization` header:
-
-```bash
-curl https://aceagent.io/api/playbooks \
-  -H "Authorization: Bearer YOUR_API_KEY"
-```
-
 ### MCP Configuration
 
 For MCP servers, set the key in the environment:
@@ -85,19 +76,10 @@ For MCP servers, set the key in the environment:
 
 ### Environment Variables
 
-Store keys in environment variables:
+Store keys in environment variables for MCP clients and tooling:
 
 ```bash
 export ACE_API_KEY="ace_live_..."
-```
-
-Then use in your application:
-
-```python
-import os
-from ace_platform import AceClient
-
-client = AceClient(api_key=os.environ["ACE_API_KEY"])
 ```
 
 ## Key Security
@@ -150,7 +132,7 @@ The dashboard shows:
 | Prefix | First 8 characters (`ace_live_...`) |
 | Scopes | Assigned permissions |
 | Created | Creation date |
-| Last Used | Most recent API call |
+| Last Used | Most recent tool call |
 
 ### Key Details
 
@@ -175,13 +157,6 @@ You cannot view the full key after creation. Only the prefix is shown.
 4. Select **Revoke**
 5. Confirm the action
 
-### Via API
-
-```bash
-curl -X DELETE https://aceagent.io/api/keys/KEY_ID \
-  -H "Authorization: Bearer ADMIN_API_KEY"
-```
-
 :::warning
 Revoking a key is immediate and irreversible. All requests using that key will fail.
 :::
@@ -198,7 +173,7 @@ ACE API keys have prefixes indicating their type:
 
 ## Rate Limits
 
-API keys are subject to rate limits:
+API keys are subject to MCP tool call rate limits:
 
 | Plan | Requests/Minute | Requests/Day |
 |------|-----------------|--------------|
@@ -208,30 +183,7 @@ API keys are subject to rate limits:
 
 ### Handling Rate Limits
 
-When rate limited, you'll receive:
-
-```json
-{
-  "error": "rate_limit_exceeded",
-  "message": "Too many requests",
-  "retry_after": 60
-}
-```
-
-Implement exponential backoff:
-
-```python
-import time
-
-def make_request_with_retry(client, max_retries=3):
-    for attempt in range(max_retries):
-        try:
-            return client.get_playbook("id")
-        except RateLimitError as e:
-            if attempt == max_retries - 1:
-                raise
-            time.sleep(e.retry_after * (2 ** attempt))
-```
+If you hit a rate limit, wait and retry with exponential backoff.
 
 ## Troubleshooting
 
@@ -262,5 +214,5 @@ def make_request_with_retry(client, max_retries=3):
 ## Next Steps
 
 - [Set up MCP integration](/docs/developer-guides/mcp-integration/overview)
-- [View API reference](/docs/api-reference/authentication)
+- [MCP integration](/docs/developer-guides/mcp-integration/overview)
 - [Monitor usage](/docs/user-guides/billing-subscriptions)

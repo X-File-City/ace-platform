@@ -4,13 +4,13 @@ sidebar_position: 5
 
 # Authentication
 
-Learn how to authenticate with the ACE API.
+Learn how to authenticate with ACE for MCP integrations.
 
 ## Authentication Methods
 
 ACE supports two authentication methods:
 
-1. **API Keys** - For programmatic access
+1. **API Keys** - For MCP tool access
 2. **JWT Tokens** - For dashboard/web app access
 
 For most integrations, you'll use **API Keys**.
@@ -27,12 +27,7 @@ For most integrations, you'll use **API Keys**.
 
 ### Using API Keys
 
-Include the key in the `Authorization` header:
-
-```bash
-curl https://aceagent.io/api/playbooks \
-  -H "Authorization: Bearer ace_live_abc123..."
-```
+Pass the key in your MCP client headers or env config (see MCP Authentication below).
 
 ### Key Format
 
@@ -66,15 +61,8 @@ API keys have scopes that control access:
 
 ### Checking Required Scopes
 
-Each API endpoint documents its required scope. For example:
-
-```
-GET /api/playbooks
-Required scope: playbooks:read
-
-POST /api/outcomes
-Required scope: outcomes:write
-```
+Each MCP tool documents its required scope. For example, `get_playbook` requires
+`playbooks:read`, and `record_outcome` requires `outcomes:write`.
 
 ### Scope Errors
 
@@ -118,21 +106,12 @@ The web dashboard uses JWT tokens. These are managed automatically:
 4. Token refreshed automatically
 
 :::note
-JWT tokens are for web app use only. Use API keys for programmatic access.
+JWT tokens are for web app use only. Use API keys for MCP tool access.
 :::
 
-## Error Responses
+## Common Auth Errors
 
-### 401 Unauthorized
-
-Missing or invalid authentication:
-
-```json
-{
-  "error": "unauthorized",
-  "message": "Invalid or missing API key"
-}
-```
+### Unauthorized
 
 **Causes:**
 - No `Authorization` header
@@ -140,17 +119,7 @@ Missing or invalid authentication:
 - Invalid API key
 - Revoked API key
 
-### 403 Forbidden
-
-Valid authentication but insufficient permissions:
-
-```json
-{
-  "error": "forbidden",
-  "message": "Insufficient permissions for this action",
-  "required_scopes": ["playbooks:write"]
-}
-```
+### Insufficient Permissions
 
 **Causes:**
 - API key missing required scope
@@ -162,11 +131,11 @@ Valid authentication but insufficient permissions:
 
 ```python
 # Bad - hardcoded key
-client = AceClient(api_key="ace_live_abc123...")
+api_key = "ace_live_abc123..."
 
 # Good - environment variable
 import os
-client = AceClient(api_key=os.environ["ACE_API_KEY"])
+api_key = os.environ["ACE_API_KEY"]
 ```
 
 ### 2. Use .gitignore
@@ -216,23 +185,18 @@ Create separate keys for:
 
 ## Rate Limiting
 
-API keys are rate limited based on plan:
+API keys are rate limited based on MCP tool call usage:
 
-| Plan | Requests/Minute | Requests/Day |
-|------|-----------------|--------------|
+| Plan | Tool Calls/Minute | Tool Calls/Day |
+|------|-------------------|---------------|
 | Free | 60 | 1,000 |
 | Pro | 300 | 10,000 |
 | Team | 1,000 | Unlimited |
 
 ### Rate Limit Headers
 
-Responses include rate limit info:
-
-```
-X-RateLimit-Limit: 60
-X-RateLimit-Remaining: 45
-X-RateLimit-Reset: 1704067200
-```
+Rate limit behavior varies by MCP client. If you hit limits, pause and retry
+with exponential backoff.
 
 ### Handling Rate Limits
 
@@ -275,14 +239,13 @@ def make_request_with_retry(func, max_retries=3):
 - Check for extra whitespace
 - Verify no encoding issues
 
-### Key working in curl but not in app
+### Key working in one client but not another
 
-- Check header is being set correctly
-- Verify no proxy stripping headers
-- Look for CORS issues in browser
+- Check headers are being set correctly
+- Verify no proxy is stripping headers
+- Confirm the MCP client supports custom headers
 
 ## Next Steps
 
 - [Create API keys](/docs/user-guides/managing-api-keys)
-- [API reference](/docs/api-reference/overview)
 - [MCP integration](/docs/developer-guides/mcp-integration/overview)

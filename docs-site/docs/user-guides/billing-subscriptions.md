@@ -14,7 +14,7 @@ ACE offers three subscription tiers:
 |---------|------|-----|------|
 | **Playbooks** | 3 | 25 | Unlimited |
 | **Evolutions/month** | 10 | 100 | Unlimited |
-| **API requests/day** | 1,000 | 10,000 | Unlimited |
+| **MCP tool calls/day** | 1,000 | 10,000 | Unlimited |
 | **Outcome storage** | 30 days | 1 year | Unlimited |
 | **Version history** | 10 versions | 50 versions | Unlimited |
 | **Support** | Community | Email | Priority |
@@ -136,7 +136,7 @@ The billing page shows:
 │ Evolutions:   45 / 100              │
 │ █████████████░░░░░░░░░░░░░░ 45%    │
 │                                     │
-│ API Calls:    3,200 / 10,000        │
+│ Tool Calls:   3,200 / 10,000        │
 │ █████████░░░░░░░░░░░░░░░░░░ 32%    │
 └─────────────────────────────────────┘
 ```
@@ -149,40 +149,6 @@ Configure alerts when approaching limits:
 2. Enable **Usage Alerts**
 3. Set threshold (e.g., 80%)
 4. Choose notification method (email, dashboard)
-
-### API Usage Details
-
-View detailed API usage:
-
-```bash
-curl https://aceagent.io/api/usage \
-  -H "Authorization: Bearer YOUR_API_KEY"
-```
-
-Response:
-
-```json
-{
-  "period": {
-    "start": "2024-01-01T00:00:00Z",
-    "end": "2024-01-31T23:59:59Z"
-  },
-  "usage": {
-    "playbooks": {
-      "current": 5,
-      "limit": 25
-    },
-    "evolutions": {
-      "current": 45,
-      "limit": 100
-    },
-    "api_calls": {
-      "current": 3200,
-      "limit": 10000
-    }
-  }
-}
-```
 
 ## Billing Portal
 
@@ -302,7 +268,7 @@ If tax-exempt, contact billing@aceagent.io with documentation.
 ### Usage Showing Incorrect
 
 - Usage updates every hour
-- Check specific counters in API
+- Check usage counters in the dashboard
 - Contact support if persists
 
 ### Can't Access Billing
@@ -313,6 +279,6 @@ If tax-exempt, contact billing@aceagent.io with documentation.
 
 ## Next Steps
 
-- [Monitor your usage](/docs/api-reference/usage-billing)
+- [Manage API keys](/docs/user-guides/managing-api-keys)
 - [Optimize evolution usage](/docs/user-guides/understanding-evolution)
 - [Contact support](mailto:support@aceagent.io)

@@ -38,39 +38,6 @@ outcome: success
 notes: Caught SQL injection in user lookup, suggested parameterized query"
 ```
 
-## Recording via API
-
-### Python
-
-```python
-from ace_platform import AceClient
-
-client = AceClient(api_key="your_api_key")
-
-client.record_outcome(
-    playbook_id="abc-123",
-    task_description="Reviewed authentication PR with 300 lines of changes",
-    outcome="success",
-    notes="Caught SQL injection in user lookup, suggested parameterized query",
-    reasoning_trace="First analyzed auth flow, then checked data validation..."
-)
-```
-
-### cURL
-
-```bash
-curl -X POST https://aceagent.io/api/outcomes \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "playbook_id": "abc-123",
-    "task_description": "Reviewed authentication PR with 300 lines of changes",
-    "outcome": "success",
-    "notes": "Caught SQL injection in user lookup",
-    "reasoning_trace": "First analyzed auth flow..."
-  }'
-```
-
 ## Outcome Fields
 
 ### Required Fields
@@ -263,13 +230,6 @@ Record outcomes soon after task completion while details are fresh.
 3. View all recorded outcomes
 4. Filter by outcome type
 
-### API
-
-```bash
-curl https://aceagent.io/api/playbooks/abc-123/outcomes \
-  -H "Authorization: Bearer YOUR_API_KEY"
-```
-
 ## Size Limits
 
 | Field | Max Size |
@@ -300,5 +260,5 @@ Truncate longer content or summarize key points.
 ## Next Steps
 
 - [Understanding evolution](/docs/user-guides/understanding-evolution)
-- [API reference for outcomes](/docs/api-reference/outcomes)
+- [MCP integration](/docs/developer-guides/mcp-integration/overview)
 - [MCP integration](/docs/developer-guides/mcp-integration/overview)

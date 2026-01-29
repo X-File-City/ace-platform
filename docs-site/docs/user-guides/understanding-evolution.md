@@ -95,12 +95,6 @@ Trigger evolution on-demand:
 2. Go to the **Evolution** tab
 3. Click **Trigger Evolution**
 
-**API:**
-```bash
-curl -X POST https://aceagent.io/api/playbooks/PLAYBOOK_ID/evolve \
-  -H "Authorization: Bearer YOUR_API_KEY"
-```
-
 **MCP:**
 ```
 Use the ace trigger_evolution tool with playbook_id "your-id"
@@ -120,12 +114,6 @@ Track evolution progress:
 ### Checking Status
 
 **Dashboard:** View real-time status on the Evolution tab
-
-**API:**
-```bash
-curl https://aceagent.io/api/evolution/JOB_ID/status \
-  -H "Authorization: Bearer YOUR_API_KEY"
-```
 
 **MCP:**
 ```
@@ -305,5 +293,5 @@ Begin with specific playbooks, let evolution generalize based on outcomes.
 ## Next Steps
 
 - [Record effective outcomes](/docs/developer-guides/recording-outcomes)
-- [API reference for evolution](/docs/api-reference/evolution)
+- [MCP integration](/docs/developer-guides/mcp-integration/overview)
 - [Manage billing](/docs/user-guides/billing-subscriptions)

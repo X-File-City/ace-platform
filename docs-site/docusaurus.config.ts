@@ -80,8 +80,8 @@ const config: Config = {
               to: '/docs/user-guides/creating-playbooks',
             },
             {
-              label: 'API Reference',
-              to: '/docs/api-reference/overview',
+              label: 'MCP Integration',
+              to: '/docs/developer-guides/mcp-integration/overview',
             },
           ],
         },

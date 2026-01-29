@@ -69,12 +69,12 @@ const FeatureList: FeatureItem[] = [
     ),
   },
   {
-    title: 'Developer-First API',
+    title: 'Outcome-Driven Evolution',
     icon: '♣',
     description: (
       <>
-        REST API and MCP tools for complete programmatic control.
-        Build custom agents that leverage evolving playbooks.
+        Record outcomes after each task and let ACE evolve playbooks
+        based on real-world results.
       </>
     ),
   },
@@ -123,9 +123,9 @@ function HomepageQuickLinks() {
             </Link>
           </div>
           <div className="col col--4">
-            <Link to="/docs/api-reference/overview" className={styles.linkCard}>
-              <h3>API Reference</h3>
-              <p>Complete REST API documentation</p>
+            <Link to="/docs/developer-guides/recording-outcomes" className={styles.linkCard}>
+              <h3>Recording Outcomes</h3>
+              <p>Feed ACE the feedback it needs to evolve</p>
             </Link>
           </div>
         </div>

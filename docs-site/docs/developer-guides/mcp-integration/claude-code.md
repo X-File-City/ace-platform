@@ -333,4 +333,4 @@ claude "Using my documentation playbook, generate a PR description for these cha
 
 - [Build custom MCP agents](/docs/developer-guides/mcp-integration/custom-agents)
 - [Recording effective outcomes](/docs/developer-guides/recording-outcomes)
-- [API reference](/docs/api-reference/overview)
+- [Managing API keys](/docs/user-guides/managing-api-keys)

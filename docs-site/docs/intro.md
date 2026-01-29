@@ -43,19 +43,12 @@ Track how your playbooks are being used and monitor evolution progress through t
 
 ## Quick Example
 
-```python
-# Record an outcome after using a playbook
-from ace_platform import AceClient
-
-client = AceClient(api_key="your-api-key")
-
-# Record a successful outcome
-client.record_outcome(
-    playbook_id="abc123",
-    task_description="Summarized quarterly earnings report",
-    outcome="success",
-    notes="Summary was accurate and well-structured"
-)
+```
+Use the ace record_outcome tool with:
+- playbook_id: "abc123"
+- task_description: "Summarized quarterly earnings report"
+- outcome: "success"
+- notes: "Summary was accurate and well-structured"
 ```
 
 After enough outcomes are recorded, ACE automatically evolves the playbook to incorporate lessons learned.
@@ -102,4 +95,4 @@ ACE is ideal for:
 
 - Explore the [Getting Started](/docs/getting-started/quick-start) guide
 - Learn about [MCP Integration](/docs/developer-guides/mcp-integration/overview)
-- Browse the [API Reference](/docs/api-reference/overview)
+- Learn how to [record outcomes](/docs/developer-guides/recording-outcomes)

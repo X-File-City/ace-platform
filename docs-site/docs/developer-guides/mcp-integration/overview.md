@@ -238,6 +238,78 @@ async with ClientSession(
 
 [Custom agent guide →](/docs/developer-guides/mcp-integration/custom-agents)
 
+## Configuring Agent Instructions
+
+After connecting the MCP server, you need to tell your agent *when* and *how* to use your playbooks. Add instructions to your agent's custom instructions file (e.g., `CLAUDE.md`, `AGENTS.md`, system prompt, or equivalent).
+
+### Recommended Instructions Template
+
+```markdown
+## ACE Playbooks
+
+This project uses ACE for self-improving AI instructions.
+The ACE MCP server is configured and available.
+
+### Available Playbooks
+
+| Task | Playbook ID | When to Use |
+|------|-------------|-------------|
+| Code reviews | `abc-123-def` | Before reviewing any PR or code changes |
+| Writing tests | `def-456-ghi` | When creating or updating test files |
+| Documentation | `ghi-789-jkl` | When writing or updating documentation |
+
+### Workflow
+
+When performing tasks that have a matching playbook:
+
+1. **Before starting**: Fetch the playbook using `get_playbook` with the appropriate ID
+2. **During the task**: Follow the playbook instructions carefully
+3. **After completing**: Record the outcome using `record_outcome` with:
+   - `outcome`: "success", "partial", or "failure"
+   - `task_description`: Brief description of what was done
+   - `notes`: Any relevant feedback about what worked or didn't
+
+### Example
+
+For a code review task:
+1. Call `get_playbook` with playbook_id `abc-123-def`
+2. Review the code following the playbook guidelines
+3. Call `record_outcome` with the results
+```
+
+### Where to Add Instructions
+
+| Agent Type | Location |
+|------------|----------|
+| Claude Code | `CLAUDE.md` in project root |
+| Claude Desktop | Project instructions or conversation |
+| Custom agents | System prompt or configuration file |
+| LangChain/LlamaIndex | Agent system message |
+| AutoGPT/similar | Goals or directives configuration |
+
+### Tips for Effective Instructions
+
+1. **Be explicit about playbook IDs** - Agents can't guess which playbook to use
+2. **Define triggers clearly** - Specify what tasks should use which playbooks
+3. **Remind about outcomes** - Agents may forget to record outcomes without prompting
+4. **Keep it concise** - Long instructions may be ignored or truncated
+
+### Dynamic Playbook Discovery
+
+If you have many playbooks or they change frequently, instruct your agent to discover them:
+
+```markdown
+## ACE Playbooks
+
+Before starting a task, check if a relevant playbook exists:
+1. Call `list_playbooks` to see available playbooks
+2. If a playbook matches the task type, fetch it with `get_playbook`
+3. Follow the playbook instructions
+4. Record the outcome when complete
+```
+
+This approach is more flexible but adds latency to each task.
+
 ## Usage Patterns
 
 ### Using a Playbook

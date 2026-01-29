@@ -18,19 +18,6 @@ Learn how to create effective playbooks that improve over time.
    - **Content** - The playbook instructions in Markdown
 4. Click **Create Playbook**
 
-### Via API
-
-```bash
-curl -X POST https://aceagent.io/api/playbooks \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Code Review Assistant",
-    "description": "Reviews pull requests for quality and security",
-    "content": "# Code Review Assistant\n\n## Guidelines\n..."
-  }'
-```
-
 ### Via MCP
 
 ```
@@ -195,17 +182,6 @@ A good review should:
 
 Each edit creates a new version you can review later.
 
-### Via API
-
-```bash
-curl -X PUT https://aceagent.io/api/playbooks/PLAYBOOK_ID \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "content": "# Updated playbook content..."
-  }'
-```
-
 ## Organizing Playbooks
 
 ### Naming Conventions
@@ -307,4 +283,4 @@ Analysis report with charts and recommendations.
 
 - [Understand evolution](/docs/user-guides/understanding-evolution)
 - [Record outcomes](/docs/developer-guides/recording-outcomes)
-- [API reference](/docs/api-reference/playbooks)
+- [MCP integration](/docs/developer-guides/mcp-integration/overview)
