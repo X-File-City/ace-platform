@@ -144,6 +144,88 @@ class TestEvolutionService:
         assert "Failure 1" in reflection
         assert "Error X" in reflection
 
+    def test_run_batch_reflection_success(self, service):
+        """Test _run_batch_reflection parses valid JSON response."""
+        # Mock the API client
+        mock_response = MagicMock()
+        mock_response.choices = [
+            MagicMock(
+                message=MagicMock(
+                    content='{"analysis": "test", "bullet_tags": [{"id": "strat-00001", "tag": "helpful"}]}'
+                )
+            )
+        ]
+        mock_response.usage = MagicMock(prompt_tokens=100, completion_tokens=50, total_tokens=150)
+
+        service._api_client = MagicMock()
+        service._api_client.chat.completions.create.return_value = mock_response
+
+        outcomes = [OutcomeData(task_description="Test task", outcome_status="success")]
+        bullet_tags, token_usage = service._run_batch_reflection("## TEST\n", outcomes)
+
+        assert len(bullet_tags) == 1
+        assert bullet_tags[0]["id"] == "strat-00001"
+        assert bullet_tags[0]["tag"] == "helpful"
+        assert token_usage["total_tokens"] == 150
+
+    def test_run_batch_reflection_includes_reasoning_trace(self, service):
+        """Test _run_batch_reflection includes reasoning_trace in prompt."""
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=MagicMock(content='{"bullet_tags": []}'))]
+        mock_response.usage = MagicMock(prompt_tokens=100, completion_tokens=50, total_tokens=150)
+
+        service._api_client = MagicMock()
+        service._api_client.chat.completions.create.return_value = mock_response
+
+        outcomes = [
+            OutcomeData(
+                task_description="Test task",
+                outcome_status="success",
+                reasoning_trace="Used strategy X to solve problem Y",
+                notes="Additional notes",
+            )
+        ]
+        service._run_batch_reflection("## TEST\n", outcomes)
+
+        # Check that the prompt includes reasoning_trace
+        call_args = service._api_client.chat.completions.create.call_args
+        prompt = call_args.kwargs["messages"][0]["content"]
+        assert "Used strategy X to solve problem Y" in prompt
+        assert "Additional notes" in prompt
+
+    def test_run_batch_reflection_json_decode_error(self, service):
+        """Test _run_batch_reflection handles invalid JSON gracefully."""
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=MagicMock(content="not valid json"))]
+        mock_response.usage = MagicMock(prompt_tokens=100, completion_tokens=50, total_tokens=150)
+
+        service._api_client = MagicMock()
+        service._api_client.chat.completions.create.return_value = mock_response
+
+        outcomes = [OutcomeData(task_description="Test task", outcome_status="success")]
+        bullet_tags, token_usage = service._run_batch_reflection("## TEST\n", outcomes)
+
+        # Should return empty tags but still return token usage
+        assert bullet_tags == []
+        assert token_usage["total_tokens"] == 150
+
+    def test_run_batch_reflection_api_error(self, service):
+        """Test _run_batch_reflection handles API errors gracefully."""
+        import openai
+
+        service._api_client = MagicMock()
+        service._api_client.chat.completions.create.side_effect = openai.APIError(
+            message="API error", request=MagicMock(), body=None
+        )
+
+        outcomes = [OutcomeData(task_description="Test task", outcome_status="success")]
+        bullet_tags, token_usage = service._run_batch_reflection("## TEST\n", outcomes)
+
+        # Should return empty results on API error
+        assert bullet_tags == []
+        assert token_usage == {}
+
+    @patch("ace_platform.core.evolution.EvolutionService._run_batch_reflection")
     @patch("ace_platform.core.evolution.EvolutionService._get_curator")
     @patch("ace_platform.core.evolution.EvolutionService._get_playbook_stats")
     @patch("ace_platform.core.evolution.EvolutionService._get_next_global_id")
@@ -152,12 +234,17 @@ class TestEvolutionService:
         mock_next_id,
         mock_stats,
         mock_get_curator,
+        mock_batch_reflection,
         service,
     ):
-        """Test evolve_playbook processes outcomes through curator."""
+        """Test evolve_playbook processes outcomes through reflection and curator."""
         # Setup mocks
         mock_next_id.return_value = 1
         mock_stats.return_value = {"total_bullets": 0}
+        mock_batch_reflection.return_value = (
+            [],
+            {"prompt_tokens": 50, "completion_tokens": 25, "total_tokens": 75},
+        )
 
         mock_curator = MagicMock()
         evolved_content = "## STRATEGIES\n[strat-00001] helpful=0 harmful=0 :: New insight"
@@ -180,8 +267,57 @@ class TestEvolutionService:
         assert result.evolved_playbook == evolved_content
         assert result.outcomes_processed == 1
         assert len(result.operations_applied) == 1
-        assert result.token_usage["total_tokens"] == 150
+        # Token usage should include both reflection (75) and curator (150)
+        assert result.token_usage["total_tokens"] == 225
+        mock_batch_reflection.assert_called_once()
         mock_curator.curate.assert_called_once()
+
+    @patch("ace_platform.core.evolution.EvolutionService._run_batch_reflection")
+    @patch("ace_platform.core.evolution.EvolutionService._get_curator")
+    @patch("ace_platform.core.evolution.EvolutionService._get_playbook_stats")
+    @patch("ace_platform.core.evolution.EvolutionService._get_next_global_id")
+    def test_evolve_playbook_updates_bullet_counts(
+        self,
+        mock_next_id,
+        mock_stats,
+        mock_get_curator,
+        mock_batch_reflection,
+        service,
+    ):
+        """Test that evolve_playbook updates bullet counts based on reflection."""
+        # Setup mocks
+        mock_next_id.return_value = 2
+        mock_stats.return_value = {"total_bullets": 1}
+
+        # Reflection returns helpful tag for strat-00001
+        mock_batch_reflection.return_value = (
+            [{"id": "strat-00001", "tag": "helpful"}],
+            {"prompt_tokens": 50, "completion_tokens": 25, "total_tokens": 75},
+        )
+
+        mock_curator = MagicMock()
+        # Curator receives playbook with updated counts and returns it unchanged
+        mock_curator.curate.return_value = (
+            "## STRATEGIES\n[strat-00001] helpful=1 harmful=0 :: Existing insight",
+            2,
+            [],
+            {"prompt_num_tokens": 100, "response_num_tokens": 50},
+        )
+        mock_get_curator.return_value = mock_curator
+
+        # Run test with playbook containing a bullet
+        playbook = "## STRATEGIES\n[strat-00001] helpful=0 harmful=0 :: Existing insight"
+        outcomes = [
+            OutcomeData(task_description="Successful task", outcome_status="success"),
+        ]
+        service.evolve_playbook(playbook, outcomes)
+
+        # Verify the curator was called with updated counts
+        call_args = mock_curator.curate.call_args
+        current_playbook_arg = call_args.kwargs.get("current_playbook") or call_args[1].get(
+            "current_playbook"
+        )
+        assert "helpful=1" in current_playbook_arg
 
     def test_unsupported_api_provider(self, mock_settings):
         """Test error for unsupported API provider."""
