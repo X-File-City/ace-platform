@@ -350,7 +350,7 @@ async def convert_content_to_bullets(
             messages=[{"role": "user", "content": prompt}],
             operation="content_to_bullets",
             playbook_id=playbook_id,
-            max_tokens=CONVERSION_MAX_TOKENS,
+            max_completion_tokens=CONVERSION_MAX_TOKENS,
             temperature=CONVERSION_TEMPERATURE,
             response_format={"type": "json_object"},
         )
