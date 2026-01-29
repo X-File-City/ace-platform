@@ -163,13 +163,17 @@ class MeteredLLMClient:
         api_params: dict[str, Any] = {
             "model": model,
             "messages": messages,
-            "temperature": temperature,
             **kwargs,
         }
 
+        # Only include temperature for models that support it
+        # gpt-5-mini only supports default temperature (1.0)
+        if not model.startswith("gpt-5"):
+            api_params["temperature"] = temperature
+
         # Use max_completion_tokens for newer models
         if max_tokens is not None:
-            if model.startswith(("gpt-4o", "o1")):
+            if model.startswith(("gpt-4o", "o1", "gpt-5")):
                 api_params["max_completion_tokens"] = max_tokens
             else:
                 api_params["max_tokens"] = max_tokens
@@ -326,13 +330,17 @@ class AsyncMeteredLLMClient:
         api_params: dict[str, Any] = {
             "model": model,
             "messages": messages,
-            "temperature": temperature,
             **kwargs,
         }
 
+        # Only include temperature for models that support it
+        # gpt-5-mini only supports default temperature (1.0)
+        if not model.startswith("gpt-5"):
+            api_params["temperature"] = temperature
+
         # Use max_completion_tokens for newer models
         if max_tokens is not None:
-            if model.startswith(("gpt-4o", "o1")):
+            if model.startswith(("gpt-4o", "o1", "gpt-5")):
                 api_params["max_completion_tokens"] = max_tokens
             else:
                 api_params["max_tokens"] = max_tokens
