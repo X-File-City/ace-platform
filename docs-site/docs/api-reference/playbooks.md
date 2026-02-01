@@ -282,26 +282,6 @@ GET /api/playbooks/{playbook_id}/versions/{version_number}
 }
 ```
 
-## Restore Version
-
-Restore a previous version as the current version.
-
-```
-POST /api/playbooks/{playbook_id}/versions/{version_number}/restore
-```
-
-**Required scope:** `playbooks:write`
-
-### Response
-
-```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "current_version": 5,
-  "message": "Restored version 2 as new version 5"
-}
-```
-
 ## Error Responses
 
 ### 404 Not Found

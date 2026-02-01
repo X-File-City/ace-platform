@@ -12,24 +12,47 @@ A **playbook** is a structured set of instructions that guides an AI agent on ho
 
 ### Anatomy of a Playbook
 
-```markdown
-# Task Name
+Playbooks use the **ACE bullet format**—structured instructions optimized for AI agents and evolution tracking.
 
-## Role
-Define the agent's persona and expertise level.
+<div className="playbook-example" style={{background: 'var(--ifm-color-emphasis-100)', padding: '1.5rem', borderRadius: '8px', marginBottom: '1rem'}}>
 
-## Context
-Background information the agent needs.
+#### Code Review Assistant
 
-## Guidelines
-Step-by-step instructions or rules to follow.
+Guidelines for reviewing code quality, security, and best practices.
 
-## Output Format
-How results should be structured.
+**STRATEGIES & INSIGHTS**
 
-## Examples (optional)
-Sample inputs and outputs.
+- `[check-context-first]` helpful=5 harmful=0 :: Read the PR description and linked issues before reviewing code to understand the intent and scope of changes.
+- `[security-mindset]` helpful=4 harmful=0 :: Look for common vulnerabilities: SQL injection, XSS, hardcoded secrets, and improper input validation.
+
+**COMMON MISTAKES TO AVOID**
+
+- `[avoid-nitpicking]` helpful=3 harmful=0 :: Focus on substantive issues over style preferences. Save formatting debates for linter configuration.
+- `[explain-why]` helpful=3 harmful=0 :: Don't just say "this is wrong"—explain why and suggest a better approach.
+
+**PROBLEM-SOLVING HEURISTICS**
+
+- `[test-coverage]` helpful=2 harmful=0 :: Check if new code paths have corresponding tests, especially for edge cases and error handling.
+
+</div>
+
+### Bullet Format
+
+Each instruction follows this structure:
+
 ```
+[semantic-slug] helpful=N harmful=N :: Actionable instruction
+```
+
+| Component | Description |
+|-----------|-------------|
+| `[semantic-slug]` | 2-4 word kebab-case identifier for tracking |
+| `helpful=N` | Count of positive outcomes from this instruction |
+| `harmful=N` | Count of negative outcomes from this instruction |
+| `::` | Separator between metadata and content |
+| Instruction | Actionable, imperative guidance (1-2 sentences) |
+
+The `helpful` and `harmful` counters start at 0 and are updated during evolution based on recorded outcomes. Instructions with high harmful scores may be removed or revised.
 
 ### Playbook Properties
 
@@ -38,8 +61,9 @@ Sample inputs and outputs.
 | `id` | Unique identifier (UUID) |
 | `name` | Human-readable name |
 | `description` | Brief summary of purpose |
-| `content` | The actual playbook instructions (Markdown) |
-| `current_version` | Active version number |
+| `status` | Playbook status: `active`, `paused`, or `archived` |
+| `source` | Origin: `starter`, `user_created`, or `imported` |
+| `current_version` | Reference to the active version |
 | `created_at` | Creation timestamp |
 | `updated_at` | Last modification timestamp |
 
@@ -55,19 +79,19 @@ Every playbook maintains a **version history**. Versions are created when:
 | Property | Description |
 |----------|-------------|
 | `version_number` | Sequential version identifier |
-| `content` | Playbook content at this version |
-| `change_summary` | Description of what changed |
+| `content` | Playbook content at this version (Markdown) |
+| `bullet_count` | Number of ACE-format bullets in this version |
+| `diff_summary` | Description of what changed |
+| `created_by_job_id` | Evolution job ID if created by evolution (null for manual edits) |
 | `created_at` | When this version was created |
-| `is_evolution` | Whether this version came from evolution |
 
 ### Viewing Version History
 
 From the dashboard, click on a playbook and navigate to the **Versions** tab to:
 
 - See all historical versions
-- Compare any two versions
 - View evolution summaries
-- Restore a previous version
+- Compare versions to see what changed
 
 ## Outcomes
 
@@ -134,8 +158,8 @@ Evolution happens:
 
 | Status | Description |
 |--------|-------------|
-| `pending` | Queued, waiting to start |
-| `in_progress` | Currently processing |
+| `queued` | Waiting to start |
+| `running` | Currently processing |
 | `completed` | Successfully created new version |
 | `failed` | Error occurred during evolution |
 
@@ -149,13 +173,13 @@ Each key has specific permissions:
 
 | Scope | Allows |
 |-------|--------|
-| `playbooks:read` | Read playbook content and versions |
-| `playbooks:write` | Create, update, delete playbooks |
-| `outcomes:read` | View recorded outcomes |
-| `outcomes:write` | Record new outcomes |
-| `evolution:read` | Check evolution status |
-| `evolution:write` | Trigger manual evolution |
-| `usage:read` | View usage statistics |
+| `playbooks:read` | Read playbook content and metadata |
+| `playbooks:write` | Create and update playbooks |
+| `outcomes:read` | Read task outcomes |
+| `outcomes:write` | Record task outcomes |
+| `evolution:read` | Read evolution job status |
+| `evolution:write` | Trigger playbook evolution |
+| `*` | Full access to all operations |
 
 ### Key Types
 
@@ -177,6 +201,8 @@ Never expose API keys with write scopes in client-side code or public repositori
 |------|-------------|
 | `list_playbooks` | List all your playbooks |
 | `get_playbook` | Get content of a specific playbook |
+| `create_playbook` | Create a new playbook |
+| `create_version` | Create a new version of a playbook |
 | `record_outcome` | Record a task outcome |
 | `trigger_evolution` | Manually trigger evolution |
 | `get_evolution_status` | Check evolution job status |
@@ -196,9 +222,10 @@ ACE offers tiered subscriptions:
 
 | Plan | Playbooks | Evolutions/mo | Price |
 |------|-----------|---------------|-------|
-| Free | 3 | 10 | $0 |
-| Pro | 25 | 100 | $29/mo |
-| Team | Unlimited | Unlimited | $99/mo |
+| Starter | 5 | 100 | $9/mo |
+| Pro | 20 | 500 | $29/mo |
+| Ultra | 100 | 2,000 | $79/mo |
+| Enterprise | Unlimited | Unlimited | Custom |
 
 ### Usage Tracking
 
@@ -206,8 +233,7 @@ Monitor your usage in the dashboard:
 
 - Playbook count
 - Evolution count this month
-- Outcome recordings
-- MCP tool calls
+- Monthly spending
 
 ## Next Steps
 
