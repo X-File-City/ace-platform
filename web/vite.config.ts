@@ -24,6 +24,8 @@ export default defineConfig({
     proxy: {
       '/auth': apiProxy,
       '/playbooks': apiProxy,
+      '/evolutions': apiProxy,
+      '/account': apiProxy,
       '/usage': apiProxy,
       '/billing': apiProxy,
       '/health': apiProxy,
