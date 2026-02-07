@@ -447,7 +447,7 @@ function Modal({
   children: ReactNode;
 }) {
   return (
-    <div className={styles.modalOverlay} onClick={onClose}>
+    <div className={styles.modalOverlay} onClick={onClose} role="dialog" aria-label={title}>
       <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
         <h2>{title}</h2>
         {children}
