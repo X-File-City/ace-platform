@@ -9,7 +9,7 @@ const API_URL = process.env.API_URL || 'https://aceagent.io';
 const config: Config = {
   title: 'ACE',
   tagline: 'Playbooks as a Service - Self-improving AI instructions',
-  favicon: 'img/favicon.ico',
+  favicon: 'img/ace-favicon.svg',
 
   // Production URL
   url: 'https://docs.aceagent.io',
