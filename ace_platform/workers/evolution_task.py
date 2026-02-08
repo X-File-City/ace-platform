@@ -330,15 +330,16 @@ def _create_diff_summary(operations: list[dict]) -> str:
 
     lines = []
     for op in operations[:10]:  # Limit to first 10 operations
-        op_type = op.get("type", "unknown")
+        op_type = op.get("type", "unknown").lower()
+        text = op.get("content", "") or op.get("text", "")
         if op_type == "add":
-            lines.append(f"+ Added: {op.get('text', '')[:50]}...")
+            lines.append(f"+ Added: {text[:50]}...")
         elif op_type == "remove":
-            lines.append(f"- Removed: {op.get('text', '')[:50]}...")
+            lines.append(f"- Removed: {text[:50]}...")
         elif op_type == "modify":
-            lines.append(f"~ Modified: {op.get('text', '')[:50]}...")
+            lines.append(f"~ Modified: {text[:50]}...")
         else:
-            lines.append(f"? {op_type}: {str(op)[:50]}...")
+            lines.append(f"? {op_type}: {text[:50]}...")
 
     if len(operations) > 10:
         lines.append(f"... and {len(operations) - 10} more operations")
