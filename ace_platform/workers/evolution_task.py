@@ -330,7 +330,7 @@ def _create_diff_summary(operations: list[dict]) -> str:
 
     lines = []
     for op in operations[:10]:  # Limit to first 10 operations
-        op_type = op.get("type", "unknown").lower()
+        op_type = str(op.get("type", "unknown")).lower()
         text = op.get("content", "") or op.get("text", "")
         if op_type == "add":
             lines.append(f"+ Added: {text[:50]}...")
