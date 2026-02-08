@@ -140,72 +140,20 @@ Each evolution creates a new version with a diff summary visible on the **Versio
 >
 > - Removed: Check for bugs (too vague)...
 
-## Optimizing Evolution
+## Tips for Better Evolution
 
-### Record Rich Outcomes
+Evolution quality depends on the outcomes you record. A few guidelines:
 
-More detail = better evolution:
+- **Be specific** — "Reviewed 200-line TypeScript PR adding OAuth integration" is far more useful than "Reviewed code"
+- **Record all outcome types** — successes, partials, and failures all contribute. Don't just record failures.
+- **Include reasoning traces** — these help the Reflector understand *why* something worked or didn't
+- **Review new versions** — check each evolved version to ensure changes make sense
 
-```json
-{
-  "outcome": "failure",
-  "task_description": "Reviewed user profile update PR",
-  "notes": "Missed XSS vulnerability in display name field. Input wasn't sanitized before rendering in HTML context.",
-  "reasoning_trace": "Focused on type safety and auth. Didn't check output encoding."
-}
-```
-
-### Balance Outcome Types
-
-Include various outcomes:
-
-- ✅ Successes - What works well
-- ⚠️ Partials - What needs refinement
-- ❌ Failures - What to avoid
-
-### Be Specific About Context
-
-```json
-{
-  "task_description": "Reviewed 200-line TypeScript PR adding OAuth integration"
-}
-```
-
-Not:
-
-```json
-{
-  "task_description": "Reviewed code"
-}
-```
+For detailed guidance on recording effective outcomes, see [Recording Outcomes](/docs/developer-guides/recording-outcomes).
 
 ## Evolution Limits
 
 Limits are based on your [subscription tier](/docs/user-guides/billing-subscriptions).
-
-## Best Practices
-
-### 1. Record Outcomes Consistently
-
-Don't just record failures. Success outcomes help preserve what works.
-
-### 2. Include Reasoning
-
-When available, include reasoning traces:
-
-```json
-{
-  "reasoning_trace": "First checked auth flow, then reviewed data validation. Didn't consider rate limiting which was the actual issue."
-}
-```
-
-### 3. Review Evolution Changes
-
-Check each new version to ensure changes make sense. Revert if needed.
-
-### 4. Start Specific, Then Generalize
-
-Begin with specific playbooks, let evolution generalize based on outcomes.
 
 ## Troubleshooting
 
@@ -214,13 +162,6 @@ Begin with specific playbooks, let evolution generalize based on outcomes.
 - Verify 5+ unprocessed outcomes exist
 - Check API key has `evolution:write` scope
 - Ensure you haven't hit monthly limit
-
-### Poor Evolution Quality
-
-- Record more detailed outcomes
-- Include both successes and failures
-- Add reasoning traces
-- Check that outcomes are specific
 
 ### Evolution Taking Too Long
 
