@@ -32,13 +32,11 @@ API keys authenticate your MCP tool requests to ACE. Each key has specific scope
 
 | Scope | Description | Use Case |
 |-------|-------------|----------|
-| `playbooks:read` | Read playbook content and versions | Agents that use playbooks |
-| `playbooks:write` | Create, update, delete playbooks | Admin tools, dashboard |
-| `outcomes:read` | View recorded outcomes | Analytics, reporting |
-| `outcomes:write` | Record new outcomes | Active agents |
-| `evolution:read` | Check evolution status | Monitoring |
-| `evolution:write` | Trigger manual evolution | Admin tools |
-| `*` | Full access to all operations | Development, admin |
+| `playbooks:read` | View playbook content | Agents that use playbooks |
+| `playbooks:write` | Create and update playbooks | Admin tools, dashboard |
+| `outcomes:write` | Submit task outcomes | Active agents |
+| `evolution:read` | View evolution status | Monitoring |
+| `evolution:write` | Manually trigger evolution | Admin tools |
 
 ### Recommended Scope Combinations
 
@@ -46,8 +44,8 @@ API keys authenticate your MCP tool requests to ACE. Each key has specific scope
 - `playbooks:read`
 - `outcomes:write`
 
-**Admin Key (Full Access):**
-- All scopes
+**Full Access:**
+- Select All (all scopes)
 
 **Monitoring Only:**
 - `playbooks:read`
@@ -107,43 +105,24 @@ export ACE_API_KEY="ace_..."
 
 ## Viewing API Keys
 
-### Key List
+Each key card on the dashboard shows:
 
-The dashboard shows:
-
-| Column | Description |
-|--------|-------------|
-| Name | Key identifier |
-| Prefix | First 8 characters (`ace_...`) |
-| Scopes | Assigned permissions |
-| Created | Creation date |
-| Last Used | Most recent tool call |
-
-### Key Details
-
-Click on a key to view:
-
-- Full scope list
-- Creation timestamp
-- Last activity
-- Usage statistics
+- **Name** and **key prefix** (`ace_...`)
+- **Scopes** as badges
+- **Created** date and **last used** date
 
 :::note
 You cannot view the full key after creation. Only the prefix is shown.
 :::
 
-## Revoking API Keys
-
-### From Dashboard
+## Deleting API Keys
 
 1. Go to **API Keys**
-2. Find the key to revoke
-3. Click the **...** menu
-4. Select **Revoke**
-5. Confirm the action
+2. Click the **trash icon** on the key you want to delete
+3. Confirm by clicking **Delete** in the confirmation prompt
 
 :::warning
-Revoking a key is immediate and irreversible. All requests using that key will fail.
+Deleting a key is immediate and irreversible. All requests using that key will fail.
 :::
 
 ## Key Format
