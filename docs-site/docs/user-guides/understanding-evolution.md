@@ -122,44 +122,23 @@ Use the ace get_evolution_status tool with job_id "your-job-id"
 
 Compare what changed between versions:
 
-```diff
-## Guidelines
-
-### Security Checks
-- Verify authentication
-- Check authorization
-+ - Validate all user inputs
-+ - Sanitize data before database queries
-- Look for exposed secrets
-```
+> **Guidelines — Security Checks**
+>
+> - Verify authentication
+> - Check authorization
+> - **Validate all user inputs** *(added)*
+> - **Sanitize data before database queries** *(added)*
+> - Look for exposed secrets
 
 ### Change Summary
 
-Each evolution includes a summary:
+Each evolution creates a new version with a diff summary visible on the **Versions** tab. The summary lists what was added, removed, or modified:
 
-> **v2.0 Evolution Summary**
+> + Added: Validate all user inputs before processing...
 >
-> Added input validation guidelines based on 3 outcomes where validation
-> issues were missed. Clarified security section to include database
-> query sanitization. Removed redundant "check for bugs" instruction
-> that was too vague.
-
-### Evolution Insights
-
-View what the Reflector identified:
-
-```json
-{
-  "patterns": [
-    "Input validation missed in 3/7 reviews",
-    "Security issues caught consistently"
-  ],
-  "recommendations": [
-    "Add explicit input validation checklist",
-    "Keep security focus - working well"
-  ]
-}
-```
+> + Added: Sanitize data before database queries...
+>
+> - Removed: Check for bugs (too vague)...
 
 ## Optimizing Evolution
 
