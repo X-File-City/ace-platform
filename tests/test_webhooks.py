@@ -382,6 +382,51 @@ class TestWebhookRouteIntegration:
         assert response.status_code == 400
         assert "Invalid webhook signature" in response.json()["error"]["message"]
 
+    @patch("ace_platform.core.webhooks.handle_webhook_event")
+    @patch("ace_platform.core.webhooks.verify_webhook_signature")
+    def test_webhook_processing_failure_returns_500_for_retry(
+        self, mock_verify, mock_handle, client
+    ):
+        """Test webhook processing failures return non-2xx so Stripe retries."""
+        mock_verify.return_value = object()
+        mock_handle.return_value = WebhookResult(
+            success=False,
+            message="Database temporarily unavailable",
+            event_type="checkout.session.completed",
+        )
+
+        response = client.post(
+            "/billing/webhook",
+            content=b'{"type":"checkout.session.completed"}',
+            headers={"Stripe-Signature": "sig_test"},
+        )
+
+        assert response.status_code == 500
+        assert "Webhook processing failed" in response.json()["error"]["message"]
+
+    @patch("ace_platform.core.webhooks.handle_webhook_event")
+    @patch("ace_platform.core.webhooks.verify_webhook_signature")
+    def test_webhook_unhandled_events_still_acknowledged_with_200(
+        self, mock_verify, mock_handle, client
+    ):
+        """Test explicitly ignored/unhandled events are still acknowledged."""
+        mock_verify.return_value = object()
+        mock_handle.return_value = WebhookResult(
+            success=True,
+            message="Event type unhandled.event acknowledged but not handled",
+            event_type="unhandled.event",
+        )
+
+        response = client.post(
+            "/billing/webhook",
+            content=b'{"type":"unhandled.event"}',
+            headers={"Stripe-Signature": "sig_test"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["received"] is True
+        assert "acknowledged" in response.json()["message"].lower()
+
 
 class TestSetupModeCheckout:
     """Tests for setup mode checkout handling (card validation)."""
