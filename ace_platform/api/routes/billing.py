@@ -419,11 +419,11 @@ async def handle_stripe_webhook(
     result = await handle_webhook_event(db, event)
 
     if not result.success:
-        # Log the error but return 200 to acknowledge receipt
-        # Stripe will retry if we return an error status
-        return WebhookResponse(
-            received=True,
-            message=f"Event received but processing failed: {result.message}",
+        # Return a retryable error so Stripe re-delivers transient failures.
+        # Unhandled/ignored event types are already represented as success=True.
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Webhook processing failed: {result.message}",
         )
 
     return WebhookResponse(
