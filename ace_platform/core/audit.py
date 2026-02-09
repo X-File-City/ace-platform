@@ -20,6 +20,7 @@ from uuid import UUID
 from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ace_platform.core.client_ip import get_client_ip as get_trusted_client_ip
 from ace_platform.db.models import AuditEventType, AuditLog, AuditSeverity
 
 logger = logging.getLogger(__name__)
@@ -28,24 +29,9 @@ logger = logging.getLogger(__name__)
 def get_client_ip(request: Request) -> str | None:
     """Extract client IP address from request.
 
-    Checks X-Forwarded-For header for proxied requests, falls back to direct client.
+    Uses hardened proxy-aware extraction with Fly header support.
     """
-    # Check for forwarded header (from reverse proxy/load balancer)
-    forwarded_for = request.headers.get("X-Forwarded-For")
-    if forwarded_for:
-        # X-Forwarded-For can contain multiple IPs; first is original client
-        return forwarded_for.split(",")[0].strip()
-
-    # Check X-Real-IP header (common in nginx)
-    real_ip = request.headers.get("X-Real-IP")
-    if real_ip:
-        return real_ip
-
-    # Fall back to direct client
-    if request.client:
-        return request.client.host
-
-    return None
+    return get_trusted_client_ip(request)
 
 
 def get_user_agent(request: Request) -> str | None:

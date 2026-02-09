@@ -35,6 +35,7 @@ from fastapi import Depends, HTTPException, Request, status
 from redis.asyncio import Redis
 
 from ace_platform.config import get_settings
+from ace_platform.core.client_ip import get_client_ip as get_trusted_client_ip
 
 logger = logging.getLogger(__name__)
 
@@ -264,25 +265,13 @@ def get_rate_limiter() -> RateLimiter:
 def get_client_ip(request: Request) -> str:
     """Extract client IP address from request.
 
-    Handles X-Forwarded-For header for requests behind proxies.
-
     Args:
         request: The incoming request.
 
     Returns:
-        The client's IP address.
+        The client's IP address, falling back to "unknown" if unavailable.
     """
-    # Check for forwarded IP (when behind proxy/load balancer)
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        # Take the first IP in the chain (original client)
-        return forwarded.split(",")[0].strip()
-
-    # Fall back to direct client IP
-    if request.client:
-        return request.client.host
-
-    return "unknown"
+    return get_trusted_client_ip(request, default="unknown") or "unknown"
 
 
 async def _check_rate_limit(

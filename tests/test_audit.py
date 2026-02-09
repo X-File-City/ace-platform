@@ -1,6 +1,7 @@
 """Tests for audit logging functionality."""
 
-from unittest.mock import MagicMock
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 from ace_platform.core.audit import (
     get_client_ip,
@@ -42,17 +43,51 @@ class TestClientIPExtraction:
         assert get_client_ip(request) == "192.168.1.100"
 
     def test_get_client_ip_x_forwarded_for(self):
-        """X-Forwarded-For header takes precedence."""
+        """XFF is parsed from right to left through trusted local proxy."""
         request = MockRequest(
             client_host="127.0.0.1",
             forwarded_for="203.0.113.50, 70.41.3.18, 150.172.238.178",
         )
-        assert get_client_ip(request) == "203.0.113.50"
+        assert get_client_ip(request) == "150.172.238.178"
 
     def test_get_client_ip_x_real_ip(self):
         """X-Real-IP is used when X-Forwarded-For is not present."""
         request = MockRequest(client_host="127.0.0.1", real_ip="203.0.113.50")
         assert get_client_ip(request) == "203.0.113.50"
+
+    def test_get_client_ip_spoofed_xff_ignored_for_direct_client(self):
+        """Direct client address wins when request does not come from trusted proxy."""
+        request = MockRequest(client_host="198.51.100.10", forwarded_for="203.0.113.50")
+        assert get_client_ip(request) == "198.51.100.10"
+
+    def test_get_client_ip_prefers_fly_client_ip(self):
+        """Fly-Client-IP is used when request comes from trusted peer."""
+        request = MockRequest(client_host="127.0.0.1")
+        request.headers["Fly-Client-IP"] = "198.51.100.10"
+        assert get_client_ip(request) == "198.51.100.10"
+
+    def test_get_client_ip_spoofed_fly_client_ip_ignored_for_direct_client(self):
+        """Fly-Client-IP is ignored when request peer is not trusted."""
+        request = MockRequest(client_host="198.51.100.10")
+        request.headers["Fly-Client-IP"] = "203.0.113.9"
+        assert get_client_ip(request) == "198.51.100.10"
+
+    def test_get_client_ip_fly_chain_with_trusted_upstream_proxy(self):
+        """Trusted upstream proxy in Fly chain is skipped to recover client IP."""
+        request = MockRequest(client_host="172.19.0.2")
+        request.headers["Fly-Client-IP"] = "203.0.113.9"
+        request.headers["X-Forwarded-For"] = "198.51.100.10, 203.0.113.9, 172.19.0.2"
+
+        with patch("ace_platform.core.client_ip.get_settings") as mock_get_settings:
+            mock_get_settings.return_value = SimpleNamespace(
+                trusted_proxy_cidrs=[
+                    "127.0.0.1/32",
+                    "::1/128",
+                    "172.19.0.0/16",
+                    "203.0.113.0/24",
+                ]
+            )
+            assert get_client_ip(request) == "198.51.100.10"
 
     def test_get_client_ip_no_client(self):
         """Returns None when no client info available."""

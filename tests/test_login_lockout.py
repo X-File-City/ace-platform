@@ -246,6 +246,24 @@ class TestRecordLoginFailure:
                 ip="192.168.1.100", email="user@example.com"
             )
 
+    @pytest.mark.asyncio
+    async def test_spoofed_xff_does_not_change_lockout_identity(self, mock_request):
+        """Untrusted peers cannot spoof lockout IP via forwarded headers."""
+        mock_request.client.host = "198.51.100.99"
+        mock_request.headers = {"X-Forwarded-For": "10.0.0.1"}
+
+        with patch("ace_platform.core.login_lockout.get_lockout_manager") as mock_get_manager:
+            mock_manager = AsyncMock()
+            mock_manager.record_failure = AsyncMock()
+            mock_get_manager.return_value = mock_manager
+
+            await record_login_failure(mock_request, "user@example.com")
+
+            mock_manager.record_failure.assert_called_once_with(
+                ip="198.51.100.99",
+                email="user@example.com",
+            )
+
 
 class TestResetLoginLockout:
     """Tests for reset_login_lockout function."""
