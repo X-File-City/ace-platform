@@ -45,6 +45,8 @@ RATE_LIMITS = {
     "register": {"limit": 3, "window_seconds": 3600},  # 3 per hour per IP
     "password_reset": {"limit": 3, "window_seconds": 3600},  # 3 per hour per email
     "outcome": {"limit": 100, "window_seconds": 3600},  # 100 per hour per user
+    "playbook_create": {"limit": 30, "window_seconds": 3600},  # 30 per hour per user
+    "version_create": {"limit": 100, "window_seconds": 3600},  # 100 per hour per user
     "evolution": {"limit": 10, "window_seconds": 3600},  # 10 per hour per playbook
     "verification_email": {"limit": 3, "window_seconds": 3600},  # 3 per hour per user
 }
