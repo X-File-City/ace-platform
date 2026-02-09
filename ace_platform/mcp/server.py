@@ -18,6 +18,7 @@ Authentication priority (first match wins):
 
 import os
 import re
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
@@ -46,7 +47,7 @@ from ace_platform.core.playbook_matching import (
     refresh_playbook_embedding,
     score_playbook_match,
 )
-from ace_platform.core.rate_limit import RATE_LIMITS, RateLimiter
+from ace_platform.core.rate_limit import RATE_LIMITS, RateLimiter, get_rate_limiter
 from ace_platform.core.validation import (
     MAX_PLAYBOOK_DESCRIPTION_SIZE,
     MAX_PLAYBOOK_NAME_SIZE,
@@ -276,6 +277,51 @@ def _require_paid_access(user: User) -> str | None:
         return "Error: Your subscription is unpaid. Please update your payment method."
 
     return "Error: Subscription required."
+
+
+def _format_rate_limit_window(window_seconds: int) -> str:
+    """Format a rate-limit window into a user-friendly label."""
+    if window_seconds % 3600 == 0:
+        hours = window_seconds // 3600
+        return f"{hours} hour" if hours == 1 else f"{hours} hours"
+    if window_seconds % 60 == 0:
+        minutes = window_seconds // 60
+        return f"{minutes} minute" if minutes == 1 else f"{minutes} minutes"
+    return f"{window_seconds} seconds"
+
+
+async def _check_mcp_rate_limit(action: str, identifier: str, tool_name: str) -> str | None:
+    """Check MCP tool rate limit and return an error message if exceeded.
+
+    Fails open if Redis is unavailable, matching API behavior.
+    """
+    config = RATE_LIMITS.get(action)
+    if not config:
+        return None
+
+    limiter = get_rate_limiter()
+    try:
+        rate_result = await limiter.is_allowed(
+            action,
+            identifier,
+            limit=config["limit"],
+            window_seconds=config["window_seconds"],
+        )
+    except Exception:
+        # If Redis is unavailable, allow the request.
+        return None
+
+    if rate_result.allowed:
+        return None
+
+    retry_after = max(1, int(rate_result.reset_at - time.time()))
+    window_label = _format_rate_limit_window(config["window_seconds"])
+
+    return (
+        f"Error: Rate limit exceeded for {tool_name}. "
+        f"Maximum {config['limit']} requests per {window_label}. "
+        f"Try again in {retry_after} seconds."
+    )
 
 
 @mcp.tool()
@@ -646,20 +692,14 @@ async def create_playbook(
     initial_content: Annotated[
         str | None, "Initial playbook content in markdown (max 100KB)"
     ] = None,
-    auto_convert: Annotated[
-        bool, "Convert initial_content to ACE bullet format using AI (default: False)"
-    ] = False,
 ) -> str:
     """Create a new playbook.
 
     Creates a new playbook with optional initial content. If initial_content
-    is provided, version 1 is created automatically.
+    is provided, version 1 is created automatically. Content is automatically
+    converted to ACE bullet format using AI.
 
     Requires a valid API key with 'playbooks:write' scope.
-
-    When auto_convert=True, the initial_content will be processed by an AI model
-    to extract actionable instructions and convert them to ACE bullet format:
-    [semantic-slug] helpful=0 harmful=0 :: Instruction content
 
     Size limits:
     - name: 255 characters max
@@ -671,7 +711,6 @@ async def create_playbook(
         api_key: API key for authentication (optional if ACE_API_KEY env var is set).
         description: Optional description of the playbook.
         initial_content: Optional initial content in markdown format.
-        auto_convert: If True, convert initial_content to ACE bullet format using AI.
 
     Returns:
         Success message with playbook ID, or error message.
@@ -700,6 +739,15 @@ async def create_playbook(
     # Check scope
     if not check_scope(api_key_record, "playbooks:write"):
         return "Error: API key lacks 'playbooks:write' scope"
+
+    # Apply rate limiting (per-user write throttle)
+    rate_limit_error = await _check_mcp_rate_limit(
+        action="playbook_create",
+        identifier=str(user.id),
+        tool_name="create_playbook",
+    )
+    if rate_limit_error:
+        return rate_limit_error
 
     # Validate inputs
     error = validate_size(name, "Name", MAX_PLAYBOOK_NAME_SIZE)
@@ -754,29 +802,28 @@ async def create_playbook(
     if initial_content:
         content_to_save = initial_content
 
-        # Apply auto-conversion if requested
-        if auto_convert:
-            from ace_platform.core.content_converter import convert_content_to_bullets
+        # Auto-convert content to ACE bullet format
+        from ace_platform.core.content_converter import convert_content_to_bullets
 
-            conversion_result = await convert_content_to_bullets(
-                content=initial_content,
-                db=db,
-                user_id=user.id,
-                playbook_id=playbook.id,
-                settings=settings,
-            )
+        conversion_result = await convert_content_to_bullets(
+            content=initial_content,
+            db=db,
+            user_id=user.id,
+            playbook_id=playbook.id,
+            settings=settings,
+        )
 
-            if conversion_result.conversion_succeeded and conversion_result.has_changes:
-                content_to_save = conversion_result.converted_content
-                # Re-validate size after conversion
-                error = validate_playbook_content(content_to_save)
-                if error:
-                    return f"Error: Converted content exceeds size limit. {error}"
-                conversion_note = f", converted from markdown ({conversion_result.bullets_extracted} bullets extracted)"
-            elif not conversion_result.conversion_succeeded:
-                conversion_note = f" (auto-convert failed: {conversion_result.error_message})"
-            elif conversion_result.error_message:
-                conversion_note = f" ({conversion_result.error_message})"
+        if conversion_result.conversion_succeeded and conversion_result.has_changes:
+            content_to_save = conversion_result.converted_content
+            # Re-validate size after conversion
+            error = validate_playbook_content(content_to_save)
+            if error:
+                return f"Error: Converted content exceeds size limit. {error}"
+            conversion_note = f", converted from markdown ({conversion_result.bullets_extracted} bullets extracted)"
+        elif not conversion_result.conversion_succeeded:
+            conversion_note = f" (auto-convert failed: {conversion_result.error_message})"
+        elif conversion_result.error_message:
+            conversion_note = f" ({conversion_result.error_message})"
 
         # Count ACE-format bullets
         bullet_count = len(re.findall(ACE_BULLET_PATTERN, content_to_save))
@@ -813,20 +860,14 @@ async def create_version(
         str | None, "API key for authentication (optional if ACE_API_KEY env var is set)"
     ] = None,
     diff_summary: Annotated[str | None, "Brief description of changes (max 500 chars)"] = None,
-    auto_convert: Annotated[
-        bool, "Convert content to ACE bullet format using AI (default: False)"
-    ] = False,
 ) -> str:
     """Create a new version of a playbook.
 
     Creates an immutable version with incremented version number.
     The playbook's current_version is updated to point to the new version.
+    Content is automatically converted to ACE bullet format using AI.
 
     Requires a valid API key with 'playbooks:write' scope.
-
-    When auto_convert=True, the content will be processed by an AI model to
-    extract actionable instructions and convert them to ACE bullet format:
-    [semantic-slug] helpful=0 harmful=0 :: Instruction content
 
     Size limits:
     - content: 100KB max
@@ -837,7 +878,6 @@ async def create_version(
         content: New version content in markdown format.
         api_key: API key for authentication (optional if ACE_API_KEY env var is set).
         diff_summary: Optional brief description of what changed.
-        auto_convert: If True, convert content to ACE bullet format using AI.
 
     Returns:
         Success message with version number, or error message.
@@ -865,6 +905,15 @@ async def create_version(
     # Check scope
     if not check_scope(api_key_record, "playbooks:write"):
         return "Error: API key lacks 'playbooks:write' scope"
+
+    # Apply rate limiting (per-user write throttle)
+    rate_limit_error = await _check_mcp_rate_limit(
+        action="version_create",
+        identifier=str(user.id),
+        tool_name="create_version",
+    )
+    if rate_limit_error:
+        return rate_limit_error
 
     # Validate playbook ID
     try:
@@ -894,32 +943,33 @@ async def create_version(
         # Use generic "not found" to avoid confirming playbook existence to unauthorized users
         return f"Error: Playbook {playbook_id} not found"
 
-    # Apply auto-conversion if requested
+    # Auto-convert content to ACE bullet format
     conversion_note = ""
-    if auto_convert:
-        from ace_platform.core.content_converter import convert_content_to_bullets
+    from ace_platform.core.content_converter import convert_content_to_bullets
 
-        conversion_result = await convert_content_to_bullets(
-            content=content,
-            db=db,
-            user_id=user.id,
-            playbook_id=pb_uuid,
-            settings=settings,
+    conversion_result = await convert_content_to_bullets(
+        content=content,
+        db=db,
+        user_id=user.id,
+        playbook_id=pb_uuid,
+        settings=settings,
+    )
+
+    if conversion_result.conversion_succeeded and conversion_result.has_changes:
+        content = conversion_result.converted_content
+        # Re-validate size after conversion (formatting can expand content)
+        error = validate_playbook_content(content)
+        if error:
+            return f"Error: Converted content exceeds size limit. {error}"
+        conversion_note = (
+            f", converted from markdown ({conversion_result.bullets_extracted} bullets extracted)"
         )
-
-        if conversion_result.conversion_succeeded and conversion_result.has_changes:
-            content = conversion_result.converted_content
-            # Re-validate size after conversion (formatting can expand content)
-            error = validate_playbook_content(content)
-            if error:
-                return f"Error: Converted content exceeds size limit. {error}"
-            conversion_note = f", converted from markdown ({conversion_result.bullets_extracted} bullets extracted)"
-        elif not conversion_result.conversion_succeeded:
-            # Conversion failed but we continue with original content
-            conversion_note = f" (auto-convert failed: {conversion_result.error_message})"
-        elif conversion_result.error_message:
-            # Succeeded but no changes (e.g., no candidates found)
-            conversion_note = f" ({conversion_result.error_message})"
+    elif not conversion_result.conversion_succeeded:
+        # Conversion failed but we continue with original content
+        conversion_note = f" (auto-convert failed: {conversion_result.error_message})"
+    elif conversion_result.error_message:
+        # Succeeded but no changes (e.g., no candidates found)
+        conversion_note = f" ({conversion_result.error_message})"
 
     # Calculate bullet count (done once, outside retry loop)
     bullet_count = len(re.findall(ACE_BULLET_PATTERN, content))
@@ -1026,6 +1076,15 @@ async def record_outcome(
 
     if not check_scope(api_key_record, "outcomes:write"):
         return "Error: API key lacks 'outcomes:write' scope"
+
+    # Apply rate limiting (aligned with API outcome throttle)
+    rate_limit_error = await _check_mcp_rate_limit(
+        action="outcome",
+        identifier=str(user.id),
+        tool_name="record_outcome",
+    )
+    if rate_limit_error:
+        return rate_limit_error
 
     try:
         pb_uuid = UUID(playbook_id)

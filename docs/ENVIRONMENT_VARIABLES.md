@@ -174,7 +174,7 @@ Enable or disable Stripe billing integration.
 | Default | `false` |
 | Options | `true`, `false` |
 
-**Feature Flag:** When `false`, all billing-related endpoints are disabled and users default to the free tier.
+**Feature Flag:** When `false`, billing routes remain available, but Stripe-dependent actions return configuration errors until billing is enabled and Stripe keys are set.
 
 ### STRIPE_SECRET_KEY
 
@@ -206,6 +206,9 @@ STRIPE_WEBHOOK_SECRET=whsec_xyz789...
 ---
 
 ## MCP Server
+
+In hosted deployments, the MCP SSE endpoint is mounted on the API domain at `/mcp/sse`.
+`MCP_SERVER_HOST` and `MCP_SERVER_PORT` apply when running `python -m ace_platform.mcp.server` directly.
 
 ### MCP_SERVER_HOST
 
@@ -352,9 +355,9 @@ Environment name for configuration and logging.
 | Options | `development`, `staging`, `production` |
 
 **Effects:**
-- `development`: Verbose logging, debug endpoints enabled
-- `staging`: Production-like but with enhanced logging
-- `production`: Minimal logging, debug endpoints disabled
+- `development`: Verbose logging defaults
+- `staging`: Production-like behavior with staging-safe defaults
+- `production`: Minimal logging defaults
 
 ### DEBUG
 
@@ -368,6 +371,7 @@ Enable debug mode for verbose logging and developer features.
 
 **Effects when `true`:**
 - Swagger UI (`/docs`) and ReDoc (`/redoc`) endpoints enabled
+- When `false`, `/docs` and `/redoc` are not mounted
 - Detailed error messages in API responses
 - SQL query logging
 

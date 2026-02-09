@@ -110,7 +110,7 @@ function AceCard() {
         y="14"
         fill="var(--ink-primary)"
         fontSize="9"
-        fontFamily="Playfair Display, Georgia, serif"
+        fontFamily="Palatino Linotype, Palatino, Book Antiqua, Cambria, Georgia, Times New Roman, serif"
         fontWeight="700"
       >
         A
@@ -129,7 +129,7 @@ function AceCard() {
         y="50"
         fill="var(--ink-primary)"
         fontSize="9"
-        fontFamily="Playfair Display, Georgia, serif"
+        fontFamily="Palatino Linotype, Palatino, Book Antiqua, Cambria, Georgia, Times New Roman, serif"
         fontWeight="700"
         transform="rotate(180, 33, 47)"
       >

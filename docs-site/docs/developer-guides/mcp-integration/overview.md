@@ -54,8 +54,7 @@ Create a new playbook.
 |-----------|------|----------|-------------|
 | `name` | string | Yes | Playbook name |
 | `description` | string | No | Brief description |
-| `initial_content` | string | No | Markdown content for version 1 |
-| `auto_convert` | boolean | No | Convert content to ACE bullet format using AI |
+| `initial_content` | string | No | Markdown content for version 1 (automatically converted to ACE bullet format) |
 
 **Returns:** Success message with playbook ID.
 
@@ -67,9 +66,8 @@ Create a new version of an existing playbook.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `playbook_id` | string | Yes | Playbook UUID |
-| `content` | string | Yes | New markdown content |
+| `content` | string | Yes | New markdown content (automatically converted to ACE bullet format) |
 | `diff_summary` | string | No | Description of changes |
-| `auto_convert` | boolean | No | Convert content to ACE bullet format using AI |
 
 **Returns:** Success message with version number.
 

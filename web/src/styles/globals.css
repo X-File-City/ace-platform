@@ -2,8 +2,6 @@
    Design Direction: Classic playing card aesthetic - ivory white backgrounds with rich black text
    Like the face of a premium playing card */
 
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800&family=Cormorant+Garamond:wght@300;400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap');
-
 :root {
   /* Ivory & cream backgrounds - like card stock */
   --bg-void: #f8f6f1;
@@ -61,9 +59,10 @@
   --border-card: rgba(0, 0, 0, 0.15);
 
   /* Typography */
-  --font-display: 'Playfair Display', Georgia, serif;
-  --font-body: 'Cormorant Garamond', Garamond, serif;
-  --font-mono: 'Fira Code', monospace;
+  /* Local-first stacks avoid blocking external font providers. */
+  --font-display: "Palatino Linotype", Palatino, "Book Antiqua", Cambria, Georgia, "Times New Roman", serif;
+  --font-body: "Baskerville", "Garamond", "Times New Roman", Times, serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 
   /* Spacing scale */
   --space-xs: 0.25rem;

@@ -2,9 +2,9 @@
 
 This document provides a complete reference for the ACE Platform REST API.
 
-**Base URL:** `https://your-ace-platform.fly.dev`
+**Base URL:** `https://aceagent.io` (staging: `https://ace-platform-staging.fly.dev`)
 
-**Interactive Docs:** `/docs` (Swagger UI) | `/redoc` (ReDoc)
+**Interactive Docs:** `/docs` (Swagger UI) and `/redoc` (ReDoc) are mounted only when `DEBUG=true`
 
 ## Authentication
 

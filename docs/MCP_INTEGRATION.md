@@ -18,12 +18,12 @@ The ACE Platform exposes a Model Context Protocol (MCP) server that allows LLM a
 
 ```bash
 # First, login to get an access token
-curl -X POST https://your-ace-platform.fly.dev/auth/login \
+curl -X POST https://aceagent.io/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email": "you@example.com", "password": "your-password"}'
 
 # Create an API key with the required scopes
-curl -X POST https://your-ace-platform.fly.dev/auth/api-keys \
+curl -X POST https://aceagent.io/auth/api-keys \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -127,14 +127,18 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) o
 
 ### Production (SSE transport)
 
-For production deployments, the MCP server runs with SSE transport. Configure your client to connect via HTTP:
+For production deployments, the MCP server is mounted on the API app at `/mcp/sse`.
+Configure your client to connect via HTTP:
 
 ```json
 {
   "mcpServers": {
     "ace-platform": {
       "transport": "sse",
-      "url": "https://your-ace-platform.fly.dev:8001/sse"
+      "url": "https://aceagent.io/mcp/sse",
+      "headers": {
+        "X-API-Key": "YOUR_API_KEY"
+      }
     }
   }
 }
@@ -254,6 +258,9 @@ Response:
 
 The MCP server uses these environment variables:
 
+These apply when running `python -m ace_platform.mcp.server` directly.
+For hosted deployments, clients should use `<api-domain>/mcp/sse`.
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `MCP_SERVER_HOST` | `0.0.0.0` | Server bind host |
@@ -280,8 +287,8 @@ The MCP server uses these environment variables:
    # Local
    python -m ace_platform.mcp.server 2>&1 | tee mcp.log
 
-   # Fly.io
-   fly logs -a ace-platform -p mcp
+   # Fly.io (MCP is mounted in the API process)
+   fly logs -a ace-platform -p api
    ```
 
 ### Authentication Errors
@@ -307,4 +314,4 @@ The MCP server uses these environment variables:
 
 - [MCP Protocol Specification](https://modelcontextprotocol.io/)
 - [FastMCP Documentation](https://github.com/jlowin/fastmcp)
-- [ACE Platform API Documentation](/docs)
+- [ACE Platform API Reference](API_REFERENCE.md)
