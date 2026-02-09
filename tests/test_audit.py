@@ -61,9 +61,15 @@ class TestClientIPExtraction:
         assert get_client_ip(request) == "198.51.100.10"
 
     def test_get_client_ip_prefers_fly_client_ip(self):
-        """Fly-Client-IP is used when available."""
-        request = MockRequest(client_host="172.19.0.2")
+        """Fly-Client-IP is used when request comes from trusted peer."""
+        request = MockRequest(client_host="127.0.0.1")
         request.headers["Fly-Client-IP"] = "198.51.100.10"
+        assert get_client_ip(request) == "198.51.100.10"
+
+    def test_get_client_ip_spoofed_fly_client_ip_ignored_for_direct_client(self):
+        """Fly-Client-IP is ignored when request peer is not trusted."""
+        request = MockRequest(client_host="198.51.100.10")
+        request.headers["Fly-Client-IP"] = "203.0.113.9"
         assert get_client_ip(request) == "198.51.100.10"
 
     def test_get_client_ip_fly_chain_with_trusted_upstream_proxy(self):
@@ -74,7 +80,12 @@ class TestClientIPExtraction:
 
         with patch("ace_platform.core.client_ip.get_settings") as mock_get_settings:
             mock_get_settings.return_value = SimpleNamespace(
-                trusted_proxy_cidrs=["127.0.0.1/32", "::1/128", "203.0.113.0/24"]
+                trusted_proxy_cidrs=[
+                    "127.0.0.1/32",
+                    "::1/128",
+                    "172.19.0.0/16",
+                    "203.0.113.0/24",
+                ]
             )
             assert get_client_ip(request) == "198.51.100.10"
 

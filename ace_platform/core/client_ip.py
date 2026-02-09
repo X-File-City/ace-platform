@@ -1,7 +1,7 @@
 """Hardened client IP extraction utilities.
 
 Security model:
-- Prefer Fly.io's ``Fly-Client-IP`` when available.
+- Prefer Fly.io's ``Fly-Client-IP`` when the immediate peer is trusted.
 - Parse ``X-Forwarded-For`` from right-to-left to avoid spoofed left-most values.
 - Only trust forwarded headers from configured trusted proxy CIDRs.
 """
@@ -108,7 +108,7 @@ def get_client_ip(request: Request, *, default: str | None = None) -> str | None
     """Resolve a trustworthy client IP from a request.
 
     Rules:
-    1. If ``Fly-Client-IP`` is present and valid, use Fly-aware parsing.
+    1. Use ``Fly-Client-IP`` only when immediate peer is trusted.
     2. Otherwise, only trust forwarded headers if direct peer is trusted.
     3. Fall back to direct peer IP.
     """
@@ -118,8 +118,9 @@ def get_client_ip(request: Request, *, default: str | None = None) -> str | None
     remote_ip = _parse_ip(request.client.host if request.client else None)
     fly_client_ip = _parse_ip(request.headers.get("Fly-Client-IP"))
     xff_chain = _parse_x_forwarded_for(request.headers.get("X-Forwarded-For"))
+    remote_is_trusted = bool(remote_ip and _is_trusted_proxy(remote_ip, trusted_networks))
 
-    if fly_client_ip:
+    if fly_client_ip and remote_is_trusted:
         if not xff_chain:
             return fly_client_ip
 
@@ -135,7 +136,7 @@ def get_client_ip(request: Request, *, default: str | None = None) -> str | None
         )
         return selected or fly_client_ip
 
-    if xff_chain and remote_ip and _is_trusted_proxy(remote_ip, trusted_networks):
+    if xff_chain and remote_is_trusted and remote_ip:
         selected = _select_untrusted_from_right(
             xff_chain,
             trusted_networks,
@@ -146,7 +147,7 @@ def get_client_ip(request: Request, *, default: str | None = None) -> str | None
 
     # Only trust X-Real-IP when immediate peer is trusted.
     real_ip = _parse_ip(request.headers.get("X-Real-IP"))
-    if real_ip and remote_ip and _is_trusted_proxy(remote_ip, trusted_networks):
+    if real_ip and remote_is_trusted:
         return real_ip
 
     return remote_ip or default

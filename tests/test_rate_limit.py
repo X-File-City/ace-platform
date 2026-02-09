@@ -149,18 +149,33 @@ class TestGetClientIp:
         ip = get_client_ip(request)
         assert ip == "198.51.100.44"
 
-    def test_fly_client_ip_takes_precedence(self):
-        """Fly-Client-IP is used when provided by Fly edge."""
+    def test_fly_client_ip_ignored_for_untrusted_peer(self):
+        """Direct clients cannot spoof identity via Fly-Client-IP."""
         request = MagicMock(spec=Request)
         request.headers = {"Fly-Client-IP": "198.51.100.77"}
         request.client = MagicMock()
         request.client.host = "172.19.0.2"
 
         ip = get_client_ip(request)
+        assert ip == "172.19.0.2"
+
+    def test_fly_client_ip_used_for_trusted_peer(self):
+        """Fly-Client-IP is used when immediate peer is trusted."""
+        request = MagicMock(spec=Request)
+        request.headers = {"Fly-Client-IP": "198.51.100.77"}
+        request.client = MagicMock()
+        request.client.host = "172.19.0.2"
+
+        with patch("ace_platform.core.client_ip.get_settings") as mock_get_settings:
+            mock_get_settings.return_value = SimpleNamespace(
+                trusted_proxy_cidrs=["127.0.0.1/32", "::1/128", "172.19.0.0/16"]
+            )
+            ip = get_client_ip(request)
+
         assert ip == "198.51.100.77"
 
-    def test_fly_chain_uses_untrusted_upstream_hop(self):
-        """Without trusted proxy config, use nearest upstream hop before Fly."""
+    def test_fly_chain_ignored_for_untrusted_peer(self):
+        """Fly headers are ignored when request peer is not trusted."""
         request = MagicMock(spec=Request)
         request.headers = {
             "Fly-Client-IP": "203.0.113.9",
@@ -170,7 +185,7 @@ class TestGetClientIp:
         request.client.host = "172.19.0.2"
 
         ip = get_client_ip(request)
-        assert ip == "203.0.113.9"
+        assert ip == "172.19.0.2"
 
     def test_fly_chain_walks_past_trusted_proxy(self):
         """Trusted upstream proxies can be stripped to recover original client."""
@@ -184,7 +199,12 @@ class TestGetClientIp:
 
         with patch("ace_platform.core.client_ip.get_settings") as mock_get_settings:
             mock_get_settings.return_value = SimpleNamespace(
-                trusted_proxy_cidrs=["127.0.0.1/32", "::1/128", "203.0.113.0/24"]
+                trusted_proxy_cidrs=[
+                    "127.0.0.1/32",
+                    "::1/128",
+                    "172.19.0.0/16",
+                    "203.0.113.0/24",
+                ]
             )
             ip = get_client_ip(request)
 
