@@ -63,9 +63,11 @@ class TestProductionConfigValidation:
             environment="production",
             jwt_secret_key="a-real-production-secret-key",
             session_secret_key="a-real-session-secret-key",
+            session_cookie_secure=True,
         )
         assert settings.jwt_secret_key == "a-real-production-secret-key"
         assert settings.session_secret_key == "a-real-session-secret-key"
+        assert settings.session_cookie_secure is True
 
     def test_development_allows_empty_session_secret(self):
         """Empty session secret is allowed in development (falls back to JWT key)."""
@@ -74,3 +76,99 @@ class TestProductionConfigValidation:
             session_secret_key="",
         )
         assert settings.session_secret_key == ""
+
+    def test_production_requires_secure_session_cookie(self):
+        """Production rejects insecure OAuth session cookies."""
+        with pytest.raises(ValidationError, match="SESSION_COOKIE_SECURE must be true"):
+            Settings(
+                environment="production",
+                jwt_secret_key="a-real-production-secret-key",
+                session_secret_key="a-real-session-secret-key",
+                session_cookie_secure=False,
+            )
+
+    def test_staging_requires_secure_session_cookie(self):
+        """Staging rejects insecure OAuth session cookies."""
+        with pytest.raises(ValidationError, match="SESSION_COOKIE_SECURE must be true"):
+            Settings(
+                environment="staging",
+                jwt_secret_key="a-real-staging-secret-key",
+                session_secret_key="a-real-staging-session-secret-key",
+                session_cookie_secure=False,
+            )
+
+    def test_rejects_invalid_session_cookie_samesite(self):
+        """SameSite value must be one of lax/strict/none."""
+        with pytest.raises(
+            ValidationError, match="SESSION_COOKIE_SAMESITE must be one of: lax, strict, none"
+        ):
+            Settings(
+                environment="production",
+                jwt_secret_key="a-real-production-secret-key",
+                session_secret_key="a-real-session-secret-key",
+                session_cookie_secure=True,
+                session_cookie_samesite="invalid",
+            )
+
+    def test_production_rejects_strict_samesite_with_oauth(self):
+        """Strict SameSite can break OAuth callback state cookies."""
+        with pytest.raises(
+            ValidationError, match="SESSION_COOKIE_SAMESITE='strict' can break OAuth callbacks"
+        ):
+            Settings(
+                environment="production",
+                jwt_secret_key="a-real-production-secret-key",
+                session_secret_key="a-real-session-secret-key",
+                session_cookie_secure=True,
+                session_cookie_samesite="strict",
+                google_oauth_client_id="google-client-id",
+                google_oauth_client_secret="google-client-secret",
+            )
+
+    def test_production_accepts_lax_samesite_with_oauth(self):
+        """Lax SameSite works for OAuth callback redirects."""
+        settings = Settings(
+            environment="production",
+            jwt_secret_key="a-real-production-secret-key",
+            session_secret_key="a-real-session-secret-key",
+            session_cookie_secure=True,
+            session_cookie_samesite="lax",
+            google_oauth_client_id="google-client-id",
+            google_oauth_client_secret="google-client-secret",
+        )
+        assert settings.session_cookie_samesite == "lax"
+
+    def test_rejects_session_cookie_domain_with_scheme(self):
+        """Cookie domain must be a bare domain hostname."""
+        with pytest.raises(ValidationError, match="SESSION_COOKIE_DOMAIN must be a bare domain"):
+            Settings(
+                environment="production",
+                jwt_secret_key="a-real-production-secret-key",
+                session_secret_key="a-real-session-secret-key",
+                session_cookie_secure=True,
+                session_cookie_domain="https://aceagent.io",
+            )
+
+    def test_production_rejects_non_parent_session_cookie_domain(self):
+        """Production/staging should use a parent domain for shared OAuth cookies."""
+        with pytest.raises(
+            ValidationError, match="SESSION_COOKIE_DOMAIN should be a parent domain"
+        ):
+            Settings(
+                environment="production",
+                jwt_secret_key="a-real-production-secret-key",
+                session_secret_key="a-real-session-secret-key",
+                session_cookie_secure=True,
+                session_cookie_domain="localhost",
+            )
+
+    def test_production_accepts_parent_session_cookie_domain(self):
+        """Parent-domain cookie setting is accepted in production."""
+        settings = Settings(
+            environment="production",
+            jwt_secret_key="a-real-production-secret-key",
+            session_secret_key="a-real-session-secret-key",
+            session_cookie_secure=True,
+            session_cookie_domain=".aceagent.io",
+        )
+        assert settings.session_cookie_domain == ".aceagent.io"

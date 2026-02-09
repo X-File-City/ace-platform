@@ -9,6 +9,8 @@ from functools import lru_cache
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+_ALLOWED_SESSION_COOKIE_SAMESITE = {"lax", "strict", "none"}
+
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
@@ -324,9 +326,36 @@ class Settings(BaseSettings):
             raise ValueError(f"{field_name} is required when billing_enabled=True")
         return v
 
+    @field_validator("session_cookie_samesite", mode="after")
+    @classmethod
+    def validate_session_cookie_samesite(cls, v: str) -> str:
+        """Normalize and validate SameSite policy."""
+        normalized = v.strip().lower()
+        if normalized not in _ALLOWED_SESSION_COOKIE_SAMESITE:
+            raise ValueError("SESSION_COOKIE_SAMESITE must be one of: lax, strict, none")
+        return normalized
+
+    @field_validator("session_cookie_domain", mode="after")
+    @classmethod
+    def validate_session_cookie_domain(cls, v: str) -> str:
+        """Require cookie domain to be a hostname-only value."""
+        if not v:
+            return v
+
+        domain = v.strip()
+        if domain != v:
+            raise ValueError("SESSION_COOKIE_DOMAIN must not include surrounding whitespace")
+
+        if any(token in domain for token in ("://", "/", ":")):
+            raise ValueError(
+                "SESSION_COOKIE_DOMAIN must be a bare domain (no scheme, path, or port)"
+            )
+
+        return domain
+
     @model_validator(mode="after")
     def validate_production_secrets(self) -> "Settings":
-        """Reject insecure secret defaults in production and staging."""
+        """Reject insecure auth defaults in production and staging."""
         if self.environment not in ("production", "staging"):
             return self
 
@@ -342,6 +371,34 @@ class Settings(BaseSettings):
                 "SESSION_SECRET_KEY must be explicitly set in "
                 f"{self.environment} (do not fall back to JWT_SECRET_KEY)"
             )
+
+        if not self.session_cookie_secure:
+            if self.session_cookie_samesite == "none":
+                raise ValueError(
+                    "SESSION_COOKIE_SAMESITE='none' requires SESSION_COOKIE_SECURE=true "
+                    f"in {self.environment} for cross-origin OAuth flows"
+                )
+            raise ValueError(
+                f"SESSION_COOKIE_SECURE must be true in {self.environment} "
+                "for OAuth session cookie protection"
+            )
+
+        oauth_configured = bool(
+            self.google_oauth_client_id and self.google_oauth_client_secret
+        ) or bool(self.github_oauth_client_id and self.github_oauth_client_secret)
+        if oauth_configured and self.session_cookie_samesite == "strict":
+            raise ValueError(
+                "SESSION_COOKIE_SAMESITE='strict' can break OAuth callbacks; "
+                "use 'lax' or 'none' for cross-origin flows"
+            )
+
+        if self.session_cookie_domain:
+            bare_domain = self.session_cookie_domain.lstrip(".")
+            if "." not in bare_domain:
+                raise ValueError(
+                    "SESSION_COOKIE_DOMAIN should be a parent domain "
+                    "(example: aceagent.io or .aceagent.io) in production/staging"
+                )
 
         return self
 
