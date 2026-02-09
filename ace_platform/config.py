@@ -134,6 +134,13 @@ class Settings(BaseSettings):
         default=["http://localhost:3000", "http://localhost:8000"],
         description="Allowed CORS origins",
     )
+    trusted_proxy_cidrs: list[str] = Field(
+        default=["127.0.0.1/32", "::1/128"],
+        description=(
+            "Trusted proxy CIDRs for forwarded IP parsing. "
+            "Only requests from these proxies can influence X-Forwarded-For/X-Real-IP."
+        ),
+    )
 
     # OAuth Authentication
     google_oauth_client_id: str = Field(
