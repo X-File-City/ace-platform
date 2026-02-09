@@ -15,6 +15,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ace_platform.core.playbook_matching import refresh_playbook_embedding
 from ace_platform.db.models import (
     Playbook,
     PlaybookSource,
@@ -189,6 +190,7 @@ async def seed_starter_playbooks(db: AsyncSession) -> dict:
 
             # Set current version
             playbook.current_version_id = version.id
+            await refresh_playbook_embedding(playbook, content=content)
             await db.flush()
 
             logger.info(f"Created starter playbook '{name}' with {bullet_count} bullets")

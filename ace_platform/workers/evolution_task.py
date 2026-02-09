@@ -21,6 +21,7 @@ from ace_platform.core.metrics import (
     increment_active_jobs,
     observe_evolution,
 )
+from ace_platform.core.playbook_matching import refresh_playbook_embedding_sync
 from ace_platform.core.sentry_context import set_job_context
 from ace_platform.db.models import (
     EvolutionJob,
@@ -226,6 +227,10 @@ def _execute_evolution(db, job: EvolutionJob) -> dict:
 
         # Update playbook to point to new version
         playbook.current_version_id = new_version.id
+        refresh_playbook_embedding_sync(
+            playbook,
+            content=evolution_result.evolved_playbook,
+        )
         job.to_version_id = new_version.id
 
     # Mark outcomes as processed

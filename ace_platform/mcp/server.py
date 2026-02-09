@@ -31,6 +31,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp, Receive, Scope, Send
@@ -38,6 +39,14 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from ace_platform.config import get_settings
 from ace_platform.core.api_keys import authenticate_api_key_async
 from ace_platform.core.limits import SubscriptionTier
+from ace_platform.core.playbook_matching import (
+    build_playbook_match_text,
+    generate_embedding,
+    generate_local_embedding,
+    parse_embedding,
+    refresh_playbook_embedding,
+    score_playbook_match,
+)
 from ace_platform.core.rate_limit import RATE_LIMITS, RateLimiter, get_rate_limiter
 from ace_platform.core.validation import (
     MAX_PLAYBOOK_DESCRIPTION_SIZE,
@@ -45,6 +54,7 @@ from ace_platform.core.validation import (
     validate_outcome_inputs,
     validate_playbook_content,
     validate_size,
+    validate_task_description,
 )
 from ace_platform.db.models import (
     Outcome,
@@ -468,10 +478,15 @@ async def list_playbooks(
     api_key: Annotated[
         str | None, "API key for authentication (optional if ACE_API_KEY env var is set)"
     ] = None,
+    task: Annotated[
+        str | None,
+        "Optional task description to rank playbooks by semantic relevance",
+    ] = None,
 ) -> str:
     """List all playbooks for the authenticated user.
 
     Returns a list of playbook names and IDs.
+    Optionally accepts a task description to sort by relevance.
     Requires a valid API key with 'playbooks:read' scope.
     """
     db = get_db(ctx)
@@ -500,18 +515,168 @@ async def list_playbooks(
 
     # Query user's playbooks
     result = await db.execute(
-        select(Playbook).where(Playbook.user_id == user.id).order_by(Playbook.created_at.desc())
+        select(Playbook)
+        .where(Playbook.user_id == user.id)
+        .options(selectinload(Playbook.current_version))
+        .order_by(Playbook.created_at.desc())
     )
     playbooks = result.scalars().all()
 
     if not playbooks:
         return "No playbooks found. Create one in the dashboard first."
 
+    if task and task.strip():
+        task_description = task.strip()
+        task_validation_error = validate_task_description(task_description)
+        if task_validation_error:
+            return f"Error: {task_validation_error}"
+
+        task_embedding, task_embedding_model = await generate_embedding(
+            task_description,
+            settings=settings,
+        )
+        local_task_embedding = generate_local_embedding(task_description)
+        ranked: list[tuple[Playbook, float, str]] = []
+
+        for pb in playbooks:
+            content = pb.current_version.content if pb.current_version else None
+            playbook_text = build_playbook_match_text(
+                name=pb.name,
+                description=pb.description,
+                content=content,
+                max_chars=settings.playbook_embedding_max_chars,
+            )
+            score, method = score_playbook_match(
+                task_description=task_description,
+                playbook_text=playbook_text,
+                task_embedding=task_embedding,
+                task_embedding_model=task_embedding_model,
+                playbook_embedding=parse_embedding(pb.semantic_embedding),
+                playbook_embedding_model=pb.semantic_embedding_model,
+                local_task_embedding=local_task_embedding,
+            )
+            ranked.append((pb, score, method))
+
+        ranked.sort(key=lambda item: item[1], reverse=True)
+
+        lines = ["# Your Playbooks (Ranked by Relevance)\n", f"Task: {task_description}", ""]
+        for pb, score, method in ranked:
+            lines.append(f"- **{pb.name}** (`{pb.id}`) - relevance `{score:.2f}` ({method})")
+            if pb.description:
+                lines.append(f"  {pb.description[:100]}...")
+        return "\n".join(lines)
+
     lines = ["# Your Playbooks\n"]
     for pb in playbooks:
         lines.append(f"- **{pb.name}** (`{pb.id}`)")
         if pb.description:
             lines.append(f"  {pb.description[:100]}...")
+
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def find_playbook(
+    task_description: Annotated[str, "Task to match to the most relevant playbook"],
+    ctx: Context,
+    api_key: Annotated[
+        str | None, "API key for authentication (optional if ACE_API_KEY env var is set)"
+    ] = None,
+) -> str:
+    """Find the best matching playbook for a task using semantic similarity."""
+    db = get_db(ctx)
+
+    # Get API key from parameter or environment
+    resolved_api_key = get_api_key(api_key)
+    if not resolved_api_key:
+        return "Error: No API key provided. Set ACE_API_KEY environment variable or pass api_key parameter."
+
+    # Authenticate
+    auth_result = await authenticate_api_key_async(db, resolved_api_key)
+    if not auth_result:
+        return "Error: Invalid or revoked API key"
+
+    api_key_record, user = auth_result
+
+    paid_error = _require_paid_access(user)
+    if paid_error:
+        return paid_error
+
+    # Check scope
+    from ace_platform.core.api_keys import check_scope
+
+    if not check_scope(api_key_record, "playbooks:read"):
+        return "Error: API key lacks 'playbooks:read' scope"
+
+    if not task_description or not task_description.strip():
+        return "Error: task_description is required and cannot be empty."
+
+    normalized_task = task_description.strip()
+    task_validation_error = validate_task_description(normalized_task)
+    if task_validation_error:
+        return f"Error: {task_validation_error}"
+
+    result = await db.execute(
+        select(Playbook)
+        .where(Playbook.user_id == user.id)
+        .options(selectinload(Playbook.current_version))
+        .order_by(Playbook.created_at.desc())
+    )
+    playbooks = result.scalars().all()
+
+    if not playbooks:
+        return "No playbooks found. Create one in the dashboard first."
+
+    task_embedding, task_embedding_model = await generate_embedding(
+        normalized_task, settings=settings
+    )
+    local_task_embedding = generate_local_embedding(normalized_task)
+
+    ranked: list[tuple[Playbook, float, str]] = []
+    for pb in playbooks:
+        content = pb.current_version.content if pb.current_version else None
+        playbook_text = build_playbook_match_text(
+            name=pb.name,
+            description=pb.description,
+            content=content,
+            max_chars=settings.playbook_embedding_max_chars,
+        )
+        score, method = score_playbook_match(
+            task_description=normalized_task,
+            playbook_text=playbook_text,
+            task_embedding=task_embedding,
+            task_embedding_model=task_embedding_model,
+            playbook_embedding=parse_embedding(pb.semantic_embedding),
+            playbook_embedding_model=pb.semantic_embedding_model,
+            local_task_embedding=local_task_embedding,
+        )
+        ranked.append((pb, score, method))
+
+    ranked.sort(key=lambda item: item[1], reverse=True)
+    best_playbook, best_score, match_method = ranked[0]
+
+    confidence = "high" if best_score >= 0.75 else "medium" if best_score >= 0.5 else "low"
+
+    lines = [
+        "# Best Playbook Match",
+        "",
+        f"**Task:** {normalized_task}",
+        f"**Playbook:** {best_playbook.name}",
+        f"**Playbook ID:** `{best_playbook.id}`",
+        f"**Confidence:** {best_score:.2f} ({confidence})",
+        f"**Method:** {match_method}",
+        "",
+        f'Use `get_playbook(playbook_id="{best_playbook.id}")` to load full instructions.',
+    ]
+
+    if len(ranked) > 1:
+        second_playbook, second_score, _ = ranked[1]
+        lines.extend(
+            [
+                "",
+                f"Alternative: **{second_playbook.name}** (`{second_playbook.id}`) at `{second_score:.2f}` relevance.",
+            ]
+        )
 
     return "\n".join(lines)
 
@@ -633,6 +798,7 @@ async def create_playbook(
     # Create initial version if content provided
     version_info = ""
     conversion_note = ""
+    content_to_save: str | None = None
     if initial_content:
         content_to_save = initial_content
 
@@ -673,6 +839,12 @@ async def create_playbook(
 
         playbook.current_version_id = version.id
         version_info = f" with version 1 ({bullet_count} bullets{conversion_note})"
+
+    await refresh_playbook_embedding(
+        playbook,
+        content=content_to_save if initial_content else None,
+        settings=settings,
+    )
 
     await db.commit()
 
@@ -827,6 +999,7 @@ async def create_version(
             await db.flush()
             # Update playbook to point to new version
             playbook.current_version_id = version.id
+            await refresh_playbook_embedding(playbook, content=content, settings=settings)
             await db.commit()
 
             return (

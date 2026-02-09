@@ -11,7 +11,9 @@ use JSONB columns which are PostgreSQL-specific.
 
 import os
 import time
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import text
@@ -26,6 +28,7 @@ from ace_platform.db.models import (
     PlaybookSource,
     PlaybookStatus,
     PlaybookVersion,
+    SubscriptionStatus,
     User,
 )
 from ace_platform.mcp.tools import (
@@ -34,6 +37,35 @@ from ace_platform.mcp.tools import (
     MCPScope,
     validate_scopes,
 )
+
+
+class _MockScalarResult:
+    def __init__(self, items):
+        self._items = items
+
+    def all(self):
+        return self._items
+
+
+class _MockExecuteResult:
+    def __init__(self, items):
+        self._items = items
+
+    def scalars(self):
+        return _MockScalarResult(self._items)
+
+
+class _MockDB:
+    def __init__(self, items):
+        self._items = items
+        self.commit_called = False
+
+    async def execute(self, _query):
+        return _MockExecuteResult(self._items)
+
+    async def commit(self):
+        self.commit_called = True
+
 
 # PostgreSQL test database URL - requires running PostgreSQL
 RUN_INTEGRATION_TESTS = os.environ.get("RUN_MCP_INTEGRATION_TESTS") == "1"
@@ -698,6 +730,360 @@ Different section.
         assert "### Child Section" in result
         assert "### Another Child" in result
         assert "Sibling Section" not in result
+
+
+class TestPlaybookSemanticMatchingTools:
+    """Unit tests for semantic playbook matching MCP tools."""
+
+    @pytest.mark.asyncio
+    async def test_find_playbook_returns_best_match(self, monkeypatch):
+        """find_playbook should return the highest-scoring playbook."""
+        import ace_platform.core.api_keys as api_keys
+        from ace_platform.mcp import server as mcp_server
+
+        user = User(
+            id=uuid4(),
+            email="matcher@example.com",
+            hashed_password="hashed",
+            subscription_tier="starter",
+            subscription_status=SubscriptionStatus.ACTIVE,
+        )
+
+        pb_best = Playbook(
+            id=uuid4(),
+            user_id=user.id,
+            name="Deploy Playbook",
+            description="Deployment workflow",
+            status=PlaybookStatus.ACTIVE,
+            source=PlaybookSource.USER_CREATED,
+            semantic_embedding=[1.0, 0.0],
+            semantic_embedding_model="local-hash-v1",
+        )
+        pb_best.current_version = PlaybookVersion(
+            id=uuid4(),
+            playbook_id=pb_best.id,
+            version_number=1,
+            content="Deploy services and verify health checks",
+            bullet_count=0,
+        )
+
+        pb_other = Playbook(
+            id=uuid4(),
+            user_id=user.id,
+            name="Debug Playbook",
+            description="Debugging workflow",
+            status=PlaybookStatus.ACTIVE,
+            source=PlaybookSource.USER_CREATED,
+            semantic_embedding=[0.0, 1.0],
+            semantic_embedding_model="local-hash-v1",
+        )
+        pb_other.current_version = PlaybookVersion(
+            id=uuid4(),
+            playbook_id=pb_other.id,
+            version_number=1,
+            content="Investigate logs and isolate flaky tests",
+            bullet_count=0,
+        )
+
+        mock_db = _MockDB([pb_best, pb_other])
+        mock_ctx = MagicMock()
+        mock_ctx.request_context.lifespan_context.db = mock_db
+
+        async def fake_auth(_db, _key):
+            return SimpleNamespace(scopes=["playbooks:read"]), user
+
+        monkeypatch.setattr(mcp_server, "authenticate_api_key_async", fake_auth)
+        monkeypatch.setattr(mcp_server, "generate_embedding", fake_generate_embedding)
+        monkeypatch.setattr(mcp_server, "generate_local_embedding", lambda _text: [1.0, 0.0])
+        monkeypatch.setattr(mcp_server.settings, "openai_api_key", "")
+        monkeypatch.setattr(api_keys, "check_scope", lambda *_args: True)
+
+        result = await mcp_server.find_playbook(
+            task_description="Deploy a service to production",
+            api_key="ace_test_key",
+            ctx=mock_ctx,
+        )
+
+        assert "Best Playbook Match" in result
+        assert str(pb_best.id) in result
+        assert str(pb_other.id) in result  # Included as alternative
+
+    @pytest.mark.asyncio
+    async def test_list_playbooks_task_ranks_by_relevance(self, monkeypatch):
+        """list_playbooks(task=...) should order output by relevance."""
+        import ace_platform.core.api_keys as api_keys
+        from ace_platform.mcp import server as mcp_server
+
+        user = User(
+            id=uuid4(),
+            email="matcher2@example.com",
+            hashed_password="hashed",
+            subscription_tier="starter",
+            subscription_status=SubscriptionStatus.ACTIVE,
+        )
+
+        pb_best = Playbook(
+            id=uuid4(),
+            user_id=user.id,
+            name="Release Playbook",
+            description="Release and deploy checklist",
+            status=PlaybookStatus.ACTIVE,
+            source=PlaybookSource.USER_CREATED,
+            semantic_embedding=[1.0, 0.0],
+            semantic_embedding_model="local-hash-v1",
+        )
+        pb_best.current_version = PlaybookVersion(
+            id=uuid4(),
+            playbook_id=pb_best.id,
+            version_number=1,
+            content="Release deployment rollout procedure",
+            bullet_count=0,
+        )
+
+        pb_other = Playbook(
+            id=uuid4(),
+            user_id=user.id,
+            name="Retrospective Playbook",
+            description="Postmortem workflow",
+            status=PlaybookStatus.ACTIVE,
+            source=PlaybookSource.USER_CREATED,
+            semantic_embedding=[0.0, 1.0],
+            semantic_embedding_model="local-hash-v1",
+        )
+        pb_other.current_version = PlaybookVersion(
+            id=uuid4(),
+            playbook_id=pb_other.id,
+            version_number=1,
+            content="Run retrospective and gather action items",
+            bullet_count=0,
+        )
+
+        mock_db = _MockDB([pb_best, pb_other])
+        mock_ctx = MagicMock()
+        mock_ctx.request_context.lifespan_context.db = mock_db
+
+        async def fake_auth(_db, _key):
+            return SimpleNamespace(scopes=["playbooks:read"]), user
+
+        monkeypatch.setattr(mcp_server, "authenticate_api_key_async", fake_auth)
+        monkeypatch.setattr(mcp_server, "generate_embedding", fake_generate_embedding)
+        monkeypatch.setattr(mcp_server, "generate_local_embedding", lambda _text: [1.0, 0.0])
+        monkeypatch.setattr(mcp_server.settings, "openai_api_key", "")
+        monkeypatch.setattr(api_keys, "check_scope", lambda *_args: True)
+
+        result = await mcp_server.list_playbooks(
+            api_key="ace_test_key",
+            task="Deploy a release",
+            ctx=mock_ctx,
+        )
+
+        assert "Ranked by Relevance" in result
+        assert result.index("Release Playbook") < result.index("Retrospective Playbook")
+
+    @pytest.mark.asyncio
+    async def test_find_playbook_rejects_oversized_task_description(self, monkeypatch):
+        """find_playbook should enforce max task_description length."""
+        import ace_platform.core.api_keys as api_keys
+        from ace_platform.mcp import server as mcp_server
+
+        user = User(
+            id=uuid4(),
+            email="matcher3@example.com",
+            hashed_password="hashed",
+            subscription_tier="starter",
+            subscription_status=SubscriptionStatus.ACTIVE,
+        )
+        mock_db = _MockDB([])
+        mock_ctx = MagicMock()
+        mock_ctx.request_context.lifespan_context.db = mock_db
+
+        async def fake_auth(_db, _key):
+            return SimpleNamespace(scopes=["playbooks:read"]), user
+
+        async def fail_if_called(*_args, **_kwargs):
+            raise AssertionError("generate_embedding should not run for oversized task input")
+
+        monkeypatch.setattr(mcp_server, "authenticate_api_key_async", fake_auth)
+        monkeypatch.setattr(mcp_server, "generate_embedding", fail_if_called)
+        monkeypatch.setattr(api_keys, "check_scope", lambda *_args: True)
+
+        result = await mcp_server.find_playbook(
+            task_description="x" * 10001,
+            api_key="ace_test_key",
+            ctx=mock_ctx,
+        )
+
+        assert "Task description exceeds maximum size" in result
+
+    @pytest.mark.asyncio
+    async def test_list_playbooks_task_rejects_oversized_input(self, monkeypatch):
+        """list_playbooks(task=...) should enforce max task length."""
+        import ace_platform.core.api_keys as api_keys
+        from ace_platform.mcp import server as mcp_server
+
+        user = User(
+            id=uuid4(),
+            email="matcher4@example.com",
+            hashed_password="hashed",
+            subscription_tier="starter",
+            subscription_status=SubscriptionStatus.ACTIVE,
+        )
+        playbook = Playbook(
+            id=uuid4(),
+            user_id=user.id,
+            name="Any Playbook",
+            description="Any description",
+            status=PlaybookStatus.ACTIVE,
+            source=PlaybookSource.USER_CREATED,
+        )
+        playbook.current_version = PlaybookVersion(
+            id=uuid4(),
+            playbook_id=playbook.id,
+            version_number=1,
+            content="Some content",
+            bullet_count=0,
+        )
+
+        mock_db = _MockDB([playbook])
+        mock_ctx = MagicMock()
+        mock_ctx.request_context.lifespan_context.db = mock_db
+
+        async def fake_auth(_db, _key):
+            return SimpleNamespace(scopes=["playbooks:read"]), user
+
+        async def fail_if_called(*_args, **_kwargs):
+            raise AssertionError("generate_embedding should not run for oversized task input")
+
+        monkeypatch.setattr(mcp_server, "authenticate_api_key_async", fake_auth)
+        monkeypatch.setattr(mcp_server, "generate_embedding", fail_if_called)
+        monkeypatch.setattr(api_keys, "check_scope", lambda *_args: True)
+
+        result = await mcp_server.list_playbooks(
+            api_key="ace_test_key",
+            task="x" * 10001,
+            ctx=mock_ctx,
+        )
+
+        assert "Task description exceeds maximum size" in result
+
+    @pytest.mark.asyncio
+    async def test_find_playbook_does_not_backfill_embeddings(self, monkeypatch):
+        """find_playbook should remain read-only for playbooks:read keys."""
+        import ace_platform.core.api_keys as api_keys
+        from ace_platform.mcp import server as mcp_server
+
+        user = User(
+            id=uuid4(),
+            email="matcher5@example.com",
+            hashed_password="hashed",
+            subscription_tier="starter",
+            subscription_status=SubscriptionStatus.ACTIVE,
+        )
+
+        playbook = Playbook(
+            id=uuid4(),
+            user_id=user.id,
+            name="Deploy Playbook",
+            description="Deployment workflow",
+            status=PlaybookStatus.ACTIVE,
+            source=PlaybookSource.USER_CREATED,
+        )
+        playbook.current_version = PlaybookVersion(
+            id=uuid4(),
+            playbook_id=playbook.id,
+            version_number=1,
+            content="Deploy services and verify health checks",
+            bullet_count=0,
+        )
+
+        mock_db = _MockDB([playbook])
+        mock_ctx = MagicMock()
+        mock_ctx.request_context.lifespan_context.db = mock_db
+
+        async def fake_auth(_db, _key):
+            return SimpleNamespace(scopes=["playbooks:read"]), user
+
+        async def fail_refresh(*_args, **_kwargs):
+            raise AssertionError("refresh_playbook_embedding should not be called in read paths")
+
+        monkeypatch.setattr(mcp_server, "authenticate_api_key_async", fake_auth)
+        monkeypatch.setattr(mcp_server, "generate_embedding", fake_generate_embedding)
+        monkeypatch.setattr(mcp_server, "generate_local_embedding", lambda _text: [1.0, 0.0])
+        monkeypatch.setattr(mcp_server, "refresh_playbook_embedding", fail_refresh)
+        monkeypatch.setattr(mcp_server.settings, "openai_api_key", "")
+        monkeypatch.setattr(api_keys, "check_scope", lambda *_args: True)
+
+        result = await mcp_server.find_playbook(
+            task_description="Deploy a service to production",
+            api_key="ace_test_key",
+            ctx=mock_ctx,
+        )
+
+        assert "Best Playbook Match" in result
+        assert not mock_db.commit_called
+        assert playbook.semantic_embedding is None
+
+    @pytest.mark.asyncio
+    async def test_list_playbooks_task_does_not_backfill_embeddings(self, monkeypatch):
+        """list_playbooks(task=...) should remain read-only for playbooks:read keys."""
+        import ace_platform.core.api_keys as api_keys
+        from ace_platform.mcp import server as mcp_server
+
+        user = User(
+            id=uuid4(),
+            email="matcher6@example.com",
+            hashed_password="hashed",
+            subscription_tier="starter",
+            subscription_status=SubscriptionStatus.ACTIVE,
+        )
+
+        playbook = Playbook(
+            id=uuid4(),
+            user_id=user.id,
+            name="Release Playbook",
+            description="Release workflow",
+            status=PlaybookStatus.ACTIVE,
+            source=PlaybookSource.USER_CREATED,
+        )
+        playbook.current_version = PlaybookVersion(
+            id=uuid4(),
+            playbook_id=playbook.id,
+            version_number=1,
+            content="Release and verify production rollout",
+            bullet_count=0,
+        )
+
+        mock_db = _MockDB([playbook])
+        mock_ctx = MagicMock()
+        mock_ctx.request_context.lifespan_context.db = mock_db
+
+        async def fake_auth(_db, _key):
+            return SimpleNamespace(scopes=["playbooks:read"]), user
+
+        async def fail_refresh(*_args, **_kwargs):
+            raise AssertionError("refresh_playbook_embedding should not be called in read paths")
+
+        monkeypatch.setattr(mcp_server, "authenticate_api_key_async", fake_auth)
+        monkeypatch.setattr(mcp_server, "generate_embedding", fake_generate_embedding)
+        monkeypatch.setattr(mcp_server, "generate_local_embedding", lambda _text: [1.0, 0.0])
+        monkeypatch.setattr(mcp_server, "refresh_playbook_embedding", fail_refresh)
+        monkeypatch.setattr(mcp_server.settings, "openai_api_key", "")
+        monkeypatch.setattr(api_keys, "check_scope", lambda *_args: True)
+
+        result = await mcp_server.list_playbooks(
+            api_key="ace_test_key",
+            task="Deploy a release",
+            ctx=mock_ctx,
+        )
+
+        assert "Ranked by Relevance" in result
+        assert not mock_db.commit_called
+        assert playbook.semantic_embedding is None
+
+
+async def fake_generate_embedding(_task_description, settings=None):
+    """Deterministic embedding for MCP unit tests."""
+    return [1.0, 0.0], "local-hash-v1"
 
 
 class TestMCPRateLimitHelpers:

@@ -33,6 +33,7 @@ from ace_platform.api.auth import (
 )
 from ace_platform.api.deps import get_db
 from ace_platform.core.limits import get_tier_limits
+from ace_platform.core.playbook_matching import refresh_playbook_embedding
 from ace_platform.core.rate_limit import rate_limit_outcome
 from ace_platform.core.validation import (
     MAX_NOTES_SIZE,
@@ -405,6 +406,11 @@ async def create_playbook(
 
         playbook.current_version_id = version.id
 
+    await refresh_playbook_embedding(
+        playbook,
+        content=data.initial_content if data.initial_content else None,
+    )
+
     await db.commit()
     # Refresh only the playbook's scalar attributes (not relationships)
     # to get server-generated values like updated_at
@@ -509,12 +515,21 @@ async def update_playbook(
         )
 
     # Update fields if provided
+    should_refresh_embedding = False
     if data.name is not None:
         playbook.name = data.name
+        should_refresh_embedding = True
     if data.description is not None:
         playbook.description = data.description
+        should_refresh_embedding = True
     if data.status is not None:
         playbook.status = data.status
+
+    if should_refresh_embedding:
+        await refresh_playbook_embedding(
+            playbook,
+            content=playbook.current_version.content if playbook.current_version else None,
+        )
 
     await db.commit()
     await db.refresh(playbook)
@@ -753,6 +768,7 @@ async def create_version(
             await db.flush()
             # Update playbook to point to new version
             playbook.current_version_id = version.id
+            await refresh_playbook_embedding(playbook, content=data.content)
             await db.commit()
             await db.refresh(version)
 
