@@ -127,8 +127,8 @@ const config: Config = {
     },
     colorMode: {
       defaultMode: 'light',
-      disableSwitch: true, // Keep light mode only for playing card aesthetic
-      respectPrefersColorScheme: false,
+      disableSwitch: false, // Allow users to toggle between light and dark themes
+      respectPrefersColorScheme: true,
     },
   } satisfies Preset.ThemeConfig,
 };
