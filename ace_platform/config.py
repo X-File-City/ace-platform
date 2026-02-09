@@ -41,6 +41,15 @@ class Settings(BaseSettings):
         default="",
         description="OpenAI API key for LLM calls",
     )
+    playbook_embedding_model: str = Field(
+        default="text-embedding-3-small",
+        description="Embedding model used for semantic playbook matching",
+    )
+    playbook_embedding_max_chars: int = Field(
+        default=12000,
+        ge=500,
+        description="Maximum playbook characters included when generating match embeddings",
+    )
 
     # JWT Authentication
     jwt_secret_key: str = Field(

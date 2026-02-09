@@ -219,6 +219,11 @@ class Playbook(Base):
     source: Mapped[PlaybookSource] = mapped_column(
         Enum(PlaybookSource), default=PlaybookSource.USER_CREATED, nullable=False
     )
+    semantic_embedding: Mapped[list[float] | None] = mapped_column(JSONB, nullable=True)
+    semantic_embedding_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    semantic_embedding_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
