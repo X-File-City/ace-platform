@@ -75,18 +75,16 @@ All payments processed securely via Stripe.
 ### Changing Plans
 
 **Upgrading:**
-1. Go to **Settings** > **Billing**
-2. Click **Change Plan**
-3. Select new plan
-4. Confirm upgrade
+1. Go to the **Pricing** page
+2. Select a higher plan
+3. Complete checkout
 
 Upgrades take effect immediately. You'll be charged a prorated amount.
 
 **Downgrading:**
-1. Go to **Settings** > **Billing**
-2. Click **Change Plan**
-3. Select lower plan
-4. Confirm downgrade
+1. Go to the **Pricing** page
+2. Select a lower plan
+3. Confirm the change
 
 Downgrades take effect at the end of your current billing period.
 
