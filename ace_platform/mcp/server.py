@@ -53,6 +53,7 @@ from ace_platform.core.validation import (
     validate_outcome_inputs,
     validate_playbook_content,
     validate_size,
+    validate_task_description,
 )
 from ace_platform.db.models import (
     Outcome,
@@ -480,20 +481,19 @@ async def list_playbooks(
 
     if task and task.strip():
         task_description = task.strip()
+        task_validation_error = validate_task_description(task_description)
+        if task_validation_error:
+            return f"Error: {task_validation_error}"
+
         task_embedding, task_embedding_model = await generate_embedding(
             task_description,
             settings=settings,
         )
         local_task_embedding = generate_local_embedding(task_description)
-        backfilled = False
         ranked: list[tuple[Playbook, float, str]] = []
 
         for pb in playbooks:
             content = pb.current_version.content if pb.current_version else None
-            if not pb.semantic_embedding:
-                await refresh_playbook_embedding(pb, content=content, settings=settings)
-                backfilled = True
-
             playbook_text = build_playbook_match_text(
                 name=pb.name,
                 description=pb.description,
@@ -510,9 +510,6 @@ async def list_playbooks(
                 local_task_embedding=local_task_embedding,
             )
             ranked.append((pb, score, method))
-
-        if backfilled:
-            await db.commit()
 
         ranked.sort(key=lambda item: item[1], reverse=True)
 
@@ -568,6 +565,11 @@ async def find_playbook(
     if not task_description or not task_description.strip():
         return "Error: task_description is required and cannot be empty."
 
+    normalized_task = task_description.strip()
+    task_validation_error = validate_task_description(normalized_task)
+    if task_validation_error:
+        return f"Error: {task_validation_error}"
+
     result = await db.execute(
         select(Playbook)
         .where(Playbook.user_id == user.id)
@@ -579,20 +581,14 @@ async def find_playbook(
     if not playbooks:
         return "No playbooks found. Create one in the dashboard first."
 
-    normalized_task = task_description.strip()
     task_embedding, task_embedding_model = await generate_embedding(
         normalized_task, settings=settings
     )
     local_task_embedding = generate_local_embedding(normalized_task)
 
-    backfilled = False
     ranked: list[tuple[Playbook, float, str]] = []
     for pb in playbooks:
         content = pb.current_version.content if pb.current_version else None
-        if not pb.semantic_embedding:
-            await refresh_playbook_embedding(pb, content=content, settings=settings)
-            backfilled = True
-
         playbook_text = build_playbook_match_text(
             name=pb.name,
             description=pb.description,
@@ -609,9 +605,6 @@ async def find_playbook(
             local_task_embedding=local_task_embedding,
         )
         ranked.append((pb, score, method))
-
-    if backfilled:
-        await db.commit()
 
     ranked.sort(key=lambda item: item[1], reverse=True)
     best_playbook, best_score, match_method = ranked[0]

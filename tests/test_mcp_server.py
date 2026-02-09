@@ -879,6 +879,206 @@ class TestPlaybookSemanticMatchingTools:
         assert "Ranked by Relevance" in result
         assert result.index("Release Playbook") < result.index("Retrospective Playbook")
 
+    @pytest.mark.asyncio
+    async def test_find_playbook_rejects_oversized_task_description(self, monkeypatch):
+        """find_playbook should enforce max task_description length."""
+        import ace_platform.core.api_keys as api_keys
+        from ace_platform.mcp import server as mcp_server
+
+        user = User(
+            id=uuid4(),
+            email="matcher3@example.com",
+            hashed_password="hashed",
+            subscription_tier="starter",
+            subscription_status=SubscriptionStatus.ACTIVE,
+        )
+        mock_db = _MockDB([])
+        mock_ctx = MagicMock()
+        mock_ctx.request_context.lifespan_context.db = mock_db
+
+        async def fake_auth(_db, _key):
+            return SimpleNamespace(scopes=["playbooks:read"]), user
+
+        async def fail_if_called(*_args, **_kwargs):
+            raise AssertionError("generate_embedding should not run for oversized task input")
+
+        monkeypatch.setattr(mcp_server, "authenticate_api_key_async", fake_auth)
+        monkeypatch.setattr(mcp_server, "generate_embedding", fail_if_called)
+        monkeypatch.setattr(api_keys, "check_scope", lambda *_args: True)
+
+        result = await mcp_server.find_playbook(
+            task_description="x" * 10001,
+            api_key="ace_test_key",
+            ctx=mock_ctx,
+        )
+
+        assert "Task description exceeds maximum size" in result
+
+    @pytest.mark.asyncio
+    async def test_list_playbooks_task_rejects_oversized_input(self, monkeypatch):
+        """list_playbooks(task=...) should enforce max task length."""
+        import ace_platform.core.api_keys as api_keys
+        from ace_platform.mcp import server as mcp_server
+
+        user = User(
+            id=uuid4(),
+            email="matcher4@example.com",
+            hashed_password="hashed",
+            subscription_tier="starter",
+            subscription_status=SubscriptionStatus.ACTIVE,
+        )
+        playbook = Playbook(
+            id=uuid4(),
+            user_id=user.id,
+            name="Any Playbook",
+            description="Any description",
+            status=PlaybookStatus.ACTIVE,
+            source=PlaybookSource.USER_CREATED,
+        )
+        playbook.current_version = PlaybookVersion(
+            id=uuid4(),
+            playbook_id=playbook.id,
+            version_number=1,
+            content="Some content",
+            bullet_count=0,
+        )
+
+        mock_db = _MockDB([playbook])
+        mock_ctx = MagicMock()
+        mock_ctx.request_context.lifespan_context.db = mock_db
+
+        async def fake_auth(_db, _key):
+            return SimpleNamespace(scopes=["playbooks:read"]), user
+
+        async def fail_if_called(*_args, **_kwargs):
+            raise AssertionError("generate_embedding should not run for oversized task input")
+
+        monkeypatch.setattr(mcp_server, "authenticate_api_key_async", fake_auth)
+        monkeypatch.setattr(mcp_server, "generate_embedding", fail_if_called)
+        monkeypatch.setattr(api_keys, "check_scope", lambda *_args: True)
+
+        result = await mcp_server.list_playbooks(
+            api_key="ace_test_key",
+            task="x" * 10001,
+            ctx=mock_ctx,
+        )
+
+        assert "Task description exceeds maximum size" in result
+
+    @pytest.mark.asyncio
+    async def test_find_playbook_does_not_backfill_embeddings(self, monkeypatch):
+        """find_playbook should remain read-only for playbooks:read keys."""
+        import ace_platform.core.api_keys as api_keys
+        from ace_platform.mcp import server as mcp_server
+
+        user = User(
+            id=uuid4(),
+            email="matcher5@example.com",
+            hashed_password="hashed",
+            subscription_tier="starter",
+            subscription_status=SubscriptionStatus.ACTIVE,
+        )
+
+        playbook = Playbook(
+            id=uuid4(),
+            user_id=user.id,
+            name="Deploy Playbook",
+            description="Deployment workflow",
+            status=PlaybookStatus.ACTIVE,
+            source=PlaybookSource.USER_CREATED,
+        )
+        playbook.current_version = PlaybookVersion(
+            id=uuid4(),
+            playbook_id=playbook.id,
+            version_number=1,
+            content="Deploy services and verify health checks",
+            bullet_count=0,
+        )
+
+        mock_db = _MockDB([playbook])
+        mock_ctx = MagicMock()
+        mock_ctx.request_context.lifespan_context.db = mock_db
+
+        async def fake_auth(_db, _key):
+            return SimpleNamespace(scopes=["playbooks:read"]), user
+
+        async def fail_refresh(*_args, **_kwargs):
+            raise AssertionError("refresh_playbook_embedding should not be called in read paths")
+
+        monkeypatch.setattr(mcp_server, "authenticate_api_key_async", fake_auth)
+        monkeypatch.setattr(mcp_server, "generate_embedding", fake_generate_embedding)
+        monkeypatch.setattr(mcp_server, "generate_local_embedding", lambda _text: [1.0, 0.0])
+        monkeypatch.setattr(mcp_server, "refresh_playbook_embedding", fail_refresh)
+        monkeypatch.setattr(mcp_server.settings, "openai_api_key", "")
+        monkeypatch.setattr(api_keys, "check_scope", lambda *_args: True)
+
+        result = await mcp_server.find_playbook(
+            task_description="Deploy a service to production",
+            api_key="ace_test_key",
+            ctx=mock_ctx,
+        )
+
+        assert "Best Playbook Match" in result
+        assert not mock_db.commit_called
+        assert playbook.semantic_embedding is None
+
+    @pytest.mark.asyncio
+    async def test_list_playbooks_task_does_not_backfill_embeddings(self, monkeypatch):
+        """list_playbooks(task=...) should remain read-only for playbooks:read keys."""
+        import ace_platform.core.api_keys as api_keys
+        from ace_platform.mcp import server as mcp_server
+
+        user = User(
+            id=uuid4(),
+            email="matcher6@example.com",
+            hashed_password="hashed",
+            subscription_tier="starter",
+            subscription_status=SubscriptionStatus.ACTIVE,
+        )
+
+        playbook = Playbook(
+            id=uuid4(),
+            user_id=user.id,
+            name="Release Playbook",
+            description="Release workflow",
+            status=PlaybookStatus.ACTIVE,
+            source=PlaybookSource.USER_CREATED,
+        )
+        playbook.current_version = PlaybookVersion(
+            id=uuid4(),
+            playbook_id=playbook.id,
+            version_number=1,
+            content="Release and verify production rollout",
+            bullet_count=0,
+        )
+
+        mock_db = _MockDB([playbook])
+        mock_ctx = MagicMock()
+        mock_ctx.request_context.lifespan_context.db = mock_db
+
+        async def fake_auth(_db, _key):
+            return SimpleNamespace(scopes=["playbooks:read"]), user
+
+        async def fail_refresh(*_args, **_kwargs):
+            raise AssertionError("refresh_playbook_embedding should not be called in read paths")
+
+        monkeypatch.setattr(mcp_server, "authenticate_api_key_async", fake_auth)
+        monkeypatch.setattr(mcp_server, "generate_embedding", fake_generate_embedding)
+        monkeypatch.setattr(mcp_server, "generate_local_embedding", lambda _text: [1.0, 0.0])
+        monkeypatch.setattr(mcp_server, "refresh_playbook_embedding", fail_refresh)
+        monkeypatch.setattr(mcp_server.settings, "openai_api_key", "")
+        monkeypatch.setattr(api_keys, "check_scope", lambda *_args: True)
+
+        result = await mcp_server.list_playbooks(
+            api_key="ace_test_key",
+            task="Deploy a release",
+            ctx=mock_ctx,
+        )
+
+        assert "Ranked by Relevance" in result
+        assert not mock_db.commit_called
+        assert playbook.semantic_embedding is None
+
 
 async def fake_generate_embedding(_task_description, settings=None):
     """Deterministic embedding for MCP unit tests."""
