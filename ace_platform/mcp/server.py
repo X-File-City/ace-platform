@@ -38,7 +38,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from ace_platform.config import get_settings
 from ace_platform.core.api_keys import authenticate_api_key_async
 from ace_platform.core.limits import SubscriptionTier
-from ace_platform.core.rate_limit import RATE_LIMITS, RateLimiter
+from ace_platform.core.rate_limit import RATE_LIMITS, RateLimiter, get_rate_limiter
 from ace_platform.core.validation import (
     MAX_PLAYBOOK_DESCRIPTION_SIZE,
     MAX_PLAYBOOK_NAME_SIZE,
@@ -289,7 +289,7 @@ async def _check_mcp_rate_limit(action: str, identifier: str, tool_name: str) ->
     if not config:
         return None
 
-    limiter = RateLimiter()
+    limiter = get_rate_limiter()
     try:
         rate_result = await limiter.is_allowed(
             action,

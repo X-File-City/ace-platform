@@ -722,7 +722,7 @@ class TestMCPRateLimitHelpers:
         """Unknown rate-limit actions should fail open."""
         from ace_platform.mcp.server import _check_mcp_rate_limit
 
-        with patch("ace_platform.mcp.server.RateLimiter") as mock_limiter_cls:
+        with patch("ace_platform.mcp.server.get_rate_limiter") as mock_get_rate_limiter:
             result = await _check_mcp_rate_limit(
                 action="unknown_action",
                 identifier="user-123",
@@ -730,7 +730,7 @@ class TestMCPRateLimitHelpers:
             )
 
             assert result is None
-            mock_limiter_cls.assert_not_called()
+            mock_get_rate_limiter.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_check_mcp_rate_limit_returns_none_when_allowed(self):
@@ -745,10 +745,10 @@ class TestMCPRateLimitHelpers:
             limit=100,
         )
 
-        with patch("ace_platform.mcp.server.RateLimiter") as mock_limiter_cls:
+        with patch("ace_platform.mcp.server.get_rate_limiter") as mock_get_rate_limiter:
             mock_limiter = MagicMock()
             mock_limiter.is_allowed = AsyncMock(return_value=mock_result)
-            mock_limiter_cls.return_value = mock_limiter
+            mock_get_rate_limiter.return_value = mock_limiter
 
             result = await _check_mcp_rate_limit(
                 action="outcome",
@@ -771,10 +771,10 @@ class TestMCPRateLimitHelpers:
             limit=100,
         )
 
-        with patch("ace_platform.mcp.server.RateLimiter") as mock_limiter_cls:
+        with patch("ace_platform.mcp.server.get_rate_limiter") as mock_get_rate_limiter:
             mock_limiter = MagicMock()
             mock_limiter.is_allowed = AsyncMock(return_value=mock_result)
-            mock_limiter_cls.return_value = mock_limiter
+            mock_get_rate_limiter.return_value = mock_limiter
 
             result = await _check_mcp_rate_limit(
                 action="outcome",
@@ -792,10 +792,10 @@ class TestMCPRateLimitHelpers:
         """Redis failures should fail open (request allowed)."""
         from ace_platform.mcp.server import _check_mcp_rate_limit
 
-        with patch("ace_platform.mcp.server.RateLimiter") as mock_limiter_cls:
+        with patch("ace_platform.mcp.server.get_rate_limiter") as mock_get_rate_limiter:
             mock_limiter = MagicMock()
             mock_limiter.is_allowed = AsyncMock(side_effect=Exception("Redis unavailable"))
-            mock_limiter_cls.return_value = mock_limiter
+            mock_get_rate_limiter.return_value = mock_limiter
 
             result = await _check_mcp_rate_limit(
                 action="outcome",
@@ -1063,10 +1063,10 @@ class TestMCPToolsIntegration:
             limit=config["limit"],
         )
 
-        with patch("ace_platform.mcp.server.RateLimiter") as mock_limiter_cls:
+        with patch("ace_platform.mcp.server.get_rate_limiter") as mock_get_rate_limiter:
             mock_limiter = MagicMock()
             mock_limiter.is_allowed = AsyncMock(return_value=rate_limit_result)
-            mock_limiter_cls.return_value = mock_limiter
+            mock_get_rate_limiter.return_value = mock_limiter
 
             result = await record_outcome(
                 playbook_id=str(test_playbook.id),
@@ -1324,10 +1324,10 @@ class TestMCPToolsIntegration:
             limit=config["limit"],
         )
 
-        with patch("ace_platform.mcp.server.RateLimiter") as mock_limiter_cls:
+        with patch("ace_platform.mcp.server.get_rate_limiter") as mock_get_rate_limiter:
             mock_limiter = MagicMock()
             mock_limiter.is_allowed = AsyncMock(return_value=rate_limit_result)
-            mock_limiter_cls.return_value = mock_limiter
+            mock_get_rate_limiter.return_value = mock_limiter
 
             result = await create_playbook(
                 name="Rate Limited Playbook",
@@ -1431,10 +1431,10 @@ class TestMCPToolsIntegration:
             limit=config["limit"],
         )
 
-        with patch("ace_platform.mcp.server.RateLimiter") as mock_limiter_cls:
+        with patch("ace_platform.mcp.server.get_rate_limiter") as mock_get_rate_limiter:
             mock_limiter = MagicMock()
             mock_limiter.is_allowed = AsyncMock(return_value=rate_limit_result)
-            mock_limiter_cls.return_value = mock_limiter
+            mock_get_rate_limiter.return_value = mock_limiter
 
             result = await create_version(
                 playbook_id=str(test_playbook.id),
