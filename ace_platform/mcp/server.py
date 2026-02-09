@@ -18,6 +18,7 @@ Authentication priority (first match wins):
 
 import os
 import re
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
@@ -37,7 +38,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from ace_platform.config import get_settings
 from ace_platform.core.api_keys import authenticate_api_key_async
 from ace_platform.core.limits import SubscriptionTier
-from ace_platform.core.rate_limit import RATE_LIMITS, RateLimiter
+from ace_platform.core.rate_limit import RATE_LIMITS, RateLimiter, get_rate_limiter
 from ace_platform.core.validation import (
     MAX_PLAYBOOK_DESCRIPTION_SIZE,
     MAX_PLAYBOOK_NAME_SIZE,
@@ -266,6 +267,51 @@ def _require_paid_access(user: User) -> str | None:
         return "Error: Your subscription is unpaid. Please update your payment method."
 
     return "Error: Subscription required."
+
+
+def _format_rate_limit_window(window_seconds: int) -> str:
+    """Format a rate-limit window into a user-friendly label."""
+    if window_seconds % 3600 == 0:
+        hours = window_seconds // 3600
+        return f"{hours} hour" if hours == 1 else f"{hours} hours"
+    if window_seconds % 60 == 0:
+        minutes = window_seconds // 60
+        return f"{minutes} minute" if minutes == 1 else f"{minutes} minutes"
+    return f"{window_seconds} seconds"
+
+
+async def _check_mcp_rate_limit(action: str, identifier: str, tool_name: str) -> str | None:
+    """Check MCP tool rate limit and return an error message if exceeded.
+
+    Fails open if Redis is unavailable, matching API behavior.
+    """
+    config = RATE_LIMITS.get(action)
+    if not config:
+        return None
+
+    limiter = get_rate_limiter()
+    try:
+        rate_result = await limiter.is_allowed(
+            action,
+            identifier,
+            limit=config["limit"],
+            window_seconds=config["window_seconds"],
+        )
+    except Exception:
+        # If Redis is unavailable, allow the request.
+        return None
+
+    if rate_result.allowed:
+        return None
+
+    retry_after = max(1, int(rate_result.reset_at - time.time()))
+    window_label = _format_rate_limit_window(config["window_seconds"])
+
+    return (
+        f"Error: Rate limit exceeded for {tool_name}. "
+        f"Maximum {config['limit']} requests per {window_label}. "
+        f"Try again in {retry_after} seconds."
+    )
 
 
 @mcp.tool()
@@ -529,6 +575,15 @@ async def create_playbook(
     if not check_scope(api_key_record, "playbooks:write"):
         return "Error: API key lacks 'playbooks:write' scope"
 
+    # Apply rate limiting (per-user write throttle)
+    rate_limit_error = await _check_mcp_rate_limit(
+        action="playbook_create",
+        identifier=str(user.id),
+        tool_name="create_playbook",
+    )
+    if rate_limit_error:
+        return rate_limit_error
+
     # Validate inputs
     error = validate_size(name, "Name", MAX_PLAYBOOK_NAME_SIZE)
     if error:
@@ -678,6 +733,15 @@ async def create_version(
     # Check scope
     if not check_scope(api_key_record, "playbooks:write"):
         return "Error: API key lacks 'playbooks:write' scope"
+
+    # Apply rate limiting (per-user write throttle)
+    rate_limit_error = await _check_mcp_rate_limit(
+        action="version_create",
+        identifier=str(user.id),
+        tool_name="create_version",
+    )
+    if rate_limit_error:
+        return rate_limit_error
 
     # Validate playbook ID
     try:
@@ -839,6 +903,15 @@ async def record_outcome(
 
     if not check_scope(api_key_record, "outcomes:write"):
         return "Error: API key lacks 'outcomes:write' scope"
+
+    # Apply rate limiting (aligned with API outcome throttle)
+    rate_limit_error = await _check_mcp_rate_limit(
+        action="outcome",
+        identifier=str(user.id),
+        tool_name="record_outcome",
+    )
+    if rate_limit_error:
+        return rate_limit_error
 
     try:
         pb_uuid = UUID(playbook_id)

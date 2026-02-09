@@ -10,7 +10,8 @@ use JSONB columns which are PostgreSQL-specific.
 """
 
 import os
-from unittest.mock import MagicMock
+import time
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy import text
@@ -699,6 +700,112 @@ Different section.
         assert "Sibling Section" not in result
 
 
+class TestMCPRateLimitHelpers:
+    """Unit tests for MCP-specific rate limit helpers."""
+
+    def test_format_rate_limit_window_hours(self):
+        """Hour-based windows are rendered clearly."""
+        from ace_platform.mcp.server import _format_rate_limit_window
+
+        assert _format_rate_limit_window(3600) == "1 hour"
+        assert _format_rate_limit_window(7200) == "2 hours"
+
+    def test_format_rate_limit_window_minutes(self):
+        """Minute-based windows are rendered clearly."""
+        from ace_platform.mcp.server import _format_rate_limit_window
+
+        assert _format_rate_limit_window(60) == "1 minute"
+        assert _format_rate_limit_window(300) == "5 minutes"
+
+    @pytest.mark.asyncio
+    async def test_check_mcp_rate_limit_returns_none_when_action_missing(self):
+        """Unknown rate-limit actions should fail open."""
+        from ace_platform.mcp.server import _check_mcp_rate_limit
+
+        with patch("ace_platform.mcp.server.get_rate_limiter") as mock_get_rate_limiter:
+            result = await _check_mcp_rate_limit(
+                action="unknown_action",
+                identifier="user-123",
+                tool_name="some_tool",
+            )
+
+            assert result is None
+            mock_get_rate_limiter.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_check_mcp_rate_limit_returns_none_when_allowed(self):
+        """Allowed requests should pass through with no error message."""
+        from ace_platform.core.rate_limit import RateLimitResult
+        from ace_platform.mcp.server import _check_mcp_rate_limit
+
+        mock_result = RateLimitResult(
+            allowed=True,
+            remaining=99,
+            reset_at=time.time() + 60,
+            limit=100,
+        )
+
+        with patch("ace_platform.mcp.server.get_rate_limiter") as mock_get_rate_limiter:
+            mock_limiter = MagicMock()
+            mock_limiter.is_allowed = AsyncMock(return_value=mock_result)
+            mock_get_rate_limiter.return_value = mock_limiter
+
+            result = await _check_mcp_rate_limit(
+                action="outcome",
+                identifier="user-123",
+                tool_name="record_outcome",
+            )
+
+            assert result is None
+
+    @pytest.mark.asyncio
+    async def test_check_mcp_rate_limit_returns_clear_error_when_exceeded(self):
+        """Exceeded limits should return a user-friendly throttle message."""
+        from ace_platform.core.rate_limit import RateLimitResult
+        from ace_platform.mcp.server import _check_mcp_rate_limit
+
+        mock_result = RateLimitResult(
+            allowed=False,
+            remaining=0,
+            reset_at=time.time() + 120,
+            limit=100,
+        )
+
+        with patch("ace_platform.mcp.server.get_rate_limiter") as mock_get_rate_limiter:
+            mock_limiter = MagicMock()
+            mock_limiter.is_allowed = AsyncMock(return_value=mock_result)
+            mock_get_rate_limiter.return_value = mock_limiter
+
+            result = await _check_mcp_rate_limit(
+                action="outcome",
+                identifier="user-123",
+                tool_name="record_outcome",
+            )
+
+            assert result is not None
+            assert "Error: Rate limit exceeded for record_outcome." in result
+            assert "Maximum 100 requests per 1 hour." in result
+            assert "Try again in" in result
+
+    @pytest.mark.asyncio
+    async def test_check_mcp_rate_limit_allows_when_redis_unavailable(self):
+        """Redis failures should fail open (request allowed)."""
+        from ace_platform.mcp.server import _check_mcp_rate_limit
+
+        with patch("ace_platform.mcp.server.get_rate_limiter") as mock_get_rate_limiter:
+            mock_limiter = MagicMock()
+            mock_limiter.is_allowed = AsyncMock(side_effect=Exception("Redis unavailable"))
+            mock_get_rate_limiter.return_value = mock_limiter
+
+            result = await _check_mcp_rate_limit(
+                action="outcome",
+                identifier="user-123",
+                tool_name="record_outcome",
+            )
+
+            assert result is None
+
+
 @pytest.fixture
 async def test_api_key_with_write(async_session: AsyncSession, test_user: User):
     """Create a test API key with playbooks:write scope."""
@@ -938,6 +1045,43 @@ class TestMCPToolsIntegration:
 
         assert "Error: Invalid outcome status" in result
 
+    async def test_record_outcome_rate_limit_exceeded(
+        self, async_session: AsyncSession, test_playbook: Playbook, test_api_key
+    ):
+        """Test record_outcome returns a clear error when throttled."""
+        from ace_platform.core.rate_limit import RATE_LIMITS, RateLimitResult
+        from ace_platform.mcp.server import _format_rate_limit_window, record_outcome
+
+        mock_ctx = MagicMock()
+        mock_ctx.request_context.lifespan_context.db = async_session
+
+        config = RATE_LIMITS["outcome"]
+        rate_limit_result = RateLimitResult(
+            allowed=False,
+            remaining=0,
+            reset_at=time.time() + 120,
+            limit=config["limit"],
+        )
+
+        with patch("ace_platform.mcp.server.get_rate_limiter") as mock_get_rate_limiter:
+            mock_limiter = MagicMock()
+            mock_limiter.is_allowed = AsyncMock(return_value=rate_limit_result)
+            mock_get_rate_limiter.return_value = mock_limiter
+
+            result = await record_outcome(
+                playbook_id=str(test_playbook.id),
+                task_description="Completed a test task",
+                outcome="success",
+                api_key=test_api_key.full_key,
+                notes="Test notes",
+                ctx=mock_ctx,
+            )
+
+        window_label = _format_rate_limit_window(config["window_seconds"])
+        assert "Error: Rate limit exceeded for record_outcome." in result
+        assert f"Maximum {config['limit']} requests per {window_label}." in result
+        assert "Try again in" in result
+
     async def test_trigger_evolution_success(
         self, async_session: AsyncSession, test_playbook: Playbook, test_api_key
     ):
@@ -1162,6 +1306,40 @@ class TestMCPToolsIntegration:
         assert "with version 1" in result
         assert "ID:" in result
 
+    async def test_create_playbook_rate_limit_exceeded(
+        self, async_session: AsyncSession, test_api_key_with_write
+    ):
+        """Test create_playbook returns a clear error when throttled."""
+        from ace_platform.core.rate_limit import RATE_LIMITS, RateLimitResult
+        from ace_platform.mcp.server import _format_rate_limit_window, create_playbook
+
+        mock_ctx = MagicMock()
+        mock_ctx.request_context.lifespan_context.db = async_session
+
+        config = RATE_LIMITS["playbook_create"]
+        rate_limit_result = RateLimitResult(
+            allowed=False,
+            remaining=0,
+            reset_at=time.time() + 120,
+            limit=config["limit"],
+        )
+
+        with patch("ace_platform.mcp.server.get_rate_limiter") as mock_get_rate_limiter:
+            mock_limiter = MagicMock()
+            mock_limiter.is_allowed = AsyncMock(return_value=rate_limit_result)
+            mock_get_rate_limiter.return_value = mock_limiter
+
+            result = await create_playbook(
+                name="Rate Limited Playbook",
+                api_key=test_api_key_with_write.full_key,
+                ctx=mock_ctx,
+            )
+
+        window_label = _format_rate_limit_window(config["window_seconds"])
+        assert "Error: Rate limit exceeded for create_playbook." in result
+        assert f"Maximum {config['limit']} requests per {window_label}." in result
+        assert "Try again in" in result
+
     async def test_create_playbook_without_initial_content(
         self, async_session: AsyncSession, test_api_key_with_write
     ):
@@ -1234,6 +1412,41 @@ class TestMCPToolsIntegration:
         assert "Version" in result
         assert "created successfully" in result
         assert "ID:" in result
+
+    async def test_create_version_rate_limit_exceeded(
+        self, async_session: AsyncSession, test_playbook: Playbook, test_api_key_with_write
+    ):
+        """Test create_version returns a clear error when throttled."""
+        from ace_platform.core.rate_limit import RATE_LIMITS, RateLimitResult
+        from ace_platform.mcp.server import _format_rate_limit_window, create_version
+
+        mock_ctx = MagicMock()
+        mock_ctx.request_context.lifespan_context.db = async_session
+
+        config = RATE_LIMITS["version_create"]
+        rate_limit_result = RateLimitResult(
+            allowed=False,
+            remaining=0,
+            reset_at=time.time() + 120,
+            limit=config["limit"],
+        )
+
+        with patch("ace_platform.mcp.server.get_rate_limiter") as mock_get_rate_limiter:
+            mock_limiter = MagicMock()
+            mock_limiter.is_allowed = AsyncMock(return_value=rate_limit_result)
+            mock_get_rate_limiter.return_value = mock_limiter
+
+            result = await create_version(
+                playbook_id=str(test_playbook.id),
+                content="# Updated Playbook",
+                api_key=test_api_key_with_write.full_key,
+                ctx=mock_ctx,
+            )
+
+        window_label = _format_rate_limit_window(config["window_seconds"])
+        assert "Error: Rate limit exceeded for create_version." in result
+        assert f"Maximum {config['limit']} requests per {window_label}." in result
+        assert "Try again in" in result
 
     async def test_create_version_no_scope(
         self, async_session: AsyncSession, test_playbook: Playbook, test_api_key

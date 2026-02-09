@@ -98,6 +98,18 @@ class TestRateLimitConfigs:
         assert config["limit"] == 10
         assert config["window_seconds"] == 3600  # 1 hour
 
+    def test_playbook_create_config(self):
+        """Test playbook creation rate limit configuration."""
+        config = RATE_LIMITS["playbook_create"]
+        assert config["limit"] == 30
+        assert config["window_seconds"] == 3600  # 1 hour
+
+    def test_version_create_config(self):
+        """Test playbook version creation rate limit configuration."""
+        config = RATE_LIMITS["version_create"]
+        assert config["limit"] == 100
+        assert config["window_seconds"] == 3600  # 1 hour
+
     def test_register_config(self):
         """Test register rate limit configuration."""
         config = RATE_LIMITS["register"]
