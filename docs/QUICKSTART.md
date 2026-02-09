@@ -12,10 +12,13 @@ ACE Platform is a "Playbooks as a Service" platform that helps LLM agents learn 
 
 ## Quick Start
 
+All examples below use the production API URL `https://aceagent.io`.
+For staging, replace with `https://ace-platform-staging.fly.dev`.
+
 ### 1. Create an Account
 
 ```bash
-curl -X POST https://your-ace-platform.fly.dev/auth/register \
+curl -X POST https://aceagent.io/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email": "you@example.com", "password": "your-password"}'
 ```
@@ -25,7 +28,7 @@ Save the returned `access_token` - you'll need it for API calls.
 ### 2. Create Your First Playbook
 
 ```bash
-curl -X POST https://your-ace-platform.fly.dev/playbooks \
+curl -X POST https://aceagent.io/playbooks \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -40,7 +43,7 @@ Note the returned `id` - this is your playbook ID.
 ### 3. Generate an API Key (for MCP)
 
 ```bash
-curl -X POST https://your-ace-platform.fly.dev/auth/api-keys \
+curl -X POST https://aceagent.io/auth/api-keys \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -54,7 +57,7 @@ Save the returned API key securely.
 To list existing keys later (without exposing full secrets), use:
 
 ```bash
-curl -X GET https://your-ace-platform.fly.dev/auth/api-keys \
+curl -X GET https://aceagent.io/auth/api-keys \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
 ```
 
@@ -114,7 +117,7 @@ Agent: I reviewed the code and found 2 issues. Recording outcome...
 After recording several outcomes, your playbook will automatically evolve to incorporate lessons learned. You can also trigger evolution manually:
 
 ```bash
-curl -X POST https://your-ace-platform.fly.dev/playbooks/YOUR_PLAYBOOK_ID/evolve \
+curl -X POST https://aceagent.io/playbooks/YOUR_PLAYBOOK_ID/evolve \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
 ```
 
@@ -222,8 +225,8 @@ See [MCP Integration Guide](MCP_INTEGRATION.md) for setup and usage.
 
 ## Getting Help
 
-- **API Docs:** `/docs` (Swagger UI)
-- **Issues:** [GitHub Issues](https://github.com/your-org/ace-platform/issues)
+- **API Docs:** `/docs` (Swagger UI) and `/redoc` (ReDoc) are available only when `DEBUG=true`
+- **Issues:** [GitHub Issues](https://github.com/DannyMac180/ace-platform/issues)
 - **Documentation:** See `docs/` directory
 
 ---
@@ -234,7 +237,7 @@ Want to run ACE Platform locally? See [CLAUDE.md](../CLAUDE.md) for development 
 
 ```bash
 # Quick local setup
-git clone https://github.com/your-org/ace-platform.git
+git clone https://github.com/DannyMac180/ace-platform.git
 cd ace-platform
 cp .env.example .env
 # Edit .env with your API keys
