@@ -262,7 +262,7 @@ async def create_billing_portal_session(
         if settings.cors_origins:
             base_url = settings.cors_origins[0]
 
-        final_return_url = return_url or f"{base_url}/billing"
+        final_return_url = return_url or f"{base_url}/settings"
 
         session = client.billing_portal.sessions.create(
             params={

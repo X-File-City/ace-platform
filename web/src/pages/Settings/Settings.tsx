@@ -161,6 +161,17 @@ export function Settings() {
     }
   };
 
+  // Reset loading state when returning via browser back button (bfcache)
+  useEffect(() => {
+    const handlePageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) {
+        setManagingSubscription(false);
+      }
+    };
+    window.addEventListener('pageshow', handlePageShow);
+    return () => window.removeEventListener('pageshow', handlePageShow);
+  }, []);
+
   const handleSendVerification = async () => {
     setSendingVerification(true);
     setError(null);
