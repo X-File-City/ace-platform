@@ -60,13 +60,56 @@ See the [MCP Integration Overview](/docs/developer-guides/mcp-integration/overvi
 
 ## Step 4: Configure Your Agent
 
-Add instructions to your agent's configuration file (`CLAUDE.md`, `AGENTS.md`, or Custom Instructions) so it knows to use ACE playbooks and record outcomes after each task.
+Copy and paste these instructions into your agent's configuration file (`CLAUDE.md`, `AGENTS.md`, or Custom Instructions).
 
-See the [MCP Integration Overview](/docs/developer-guides/mcp-integration/overview#configuring-agent-instructions) for recommended instruction templates.
+If these instructions are followed correctly, your agent should perform the next workflow steps automatically as you use it (playbook discovery, loading instructions, applying guidance, and recording outcomes).
+
+```markdown
+## ACE Playbooks
+
+This project uses ACE for self-improving AI instructions.
+The ACE MCP server is configured and available.
+
+### Workflow
+
+For each new task (or when task intent changes materially):
+
+1. **Discover relevant playbooks first (semantic search)**
+   - Summarize the request as a concise task description
+   - Prefer `find_playbook(task_description="<task description>")` to get the best match
+   - If needed, use `list_playbooks(task="<task description>")` to review ranked alternatives
+   - If no relevant playbook is found, continue normally and do not force playbook usage
+
+2. **Load playbook instructions before doing the task (Generator step)**
+   - Use `get_playbook(playbook_id="<selected id>")` for the selected playbook
+   - Read the playbook content before starting execution
+   - Apply those instructions during planning and implementation
+
+3. **Execute the task using the playbook guidance**
+   - Use one **primary** playbook for execution and outcome attribution
+   - If multiple playbooks are relevant, keep additional playbooks as supporting context only
+
+4. **Record outcomes automatically after task completion**
+   - Call `record_outcome` exactly once per completed, playbook-guided task
+   - Include all relevant fields:
+     - `playbook_id`: ID of the primary playbook used
+     - `task_description`: What was attempted, including scope and deliverable summary
+     - `outcome`: `success`, `partial`, or `failure`
+     - `notes`: What worked, what failed, key decisions, and blockers
+     - `reasoning_trace`: Concise summary of reasoning and tradeoffs
+   - If recording fails (permissions, validation, rate limit), report the error and continue helping the user
+
+5. **Check for evolution when applicable**
+   - If you manually call `trigger_evolution` and receive a Job ID, call `get_evolution_status(job_id=...)`
+   - Do not call `get_evolution_status` without a known Job ID
+```
+
+For more configuration patterns, see the [MCP Integration Overview](/docs/developer-guides/mcp-integration/overview#configuring-agent-instructions).
 
 ## Step 5: Use Your Playbook
 
-Once connected, you can access your playbooks directly in your agent:
+With Step 4 configured, your agent should do this automatically during normal usage.
+If you want to test tool calls directly, you can still prompt it like this:
 
 ```
 Use the ace get_playbook tool with playbook_id "your-playbook-id"
@@ -76,7 +119,8 @@ Your agent will fetch the playbook content and follow the instructions.
 
 ## Step 6: Record Outcomes
 
-After using your playbook, record the outcome to help it improve:
+With Step 4 configured, your agent should record outcomes automatically after playbook-guided tasks.
+If you want to record one manually, use:
 
 ```
 Use the ace record_outcome tool with:

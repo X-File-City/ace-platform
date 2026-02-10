@@ -32,6 +32,17 @@ List all playbooks accessible with your API key.
 
 **Returns:** Markdown-formatted list of playbooks with IDs and descriptions.
 
+### find_playbook
+
+Find the best matching playbook for a task using semantic similarity.
+
+**Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `task_description` | string | Yes | Task to match |
+
+**Returns:** Best match with playbook ID, confidence score, and alternative match.
+
 ### get_playbook
 
 Get the content of a specific playbook.
@@ -125,36 +136,23 @@ MCP requires API key authentication via the `X-API-Key` header:
 | Tool | Required Scope |
 |------|----------------|
 | `list_playbooks` | `playbooks:read` |
+| `find_playbook` | `playbooks:read` |
 | `get_playbook` | `playbooks:read` |
 | `create_playbook` | `playbooks:write` |
 | `create_version` | `playbooks:write` |
-| `record_outcome` | `outcomes:write` |
-| `trigger_evolution` | `evolution:write` |
+| `record_outcome` | `outcomes:write` (+ email verification) |
+| `trigger_evolution` | `evolution:write` (+ email verification) |
 | `get_evolution_status` | `evolution:read` |
 
-## Connection Methods
+## Connection
 
-### SSE (Server-Sent Events)
-
-The default transport for remote connections:
+Connect via SSE (Server-Sent Events):
 
 ```
 https://aceagent.io/mcp/sse
 ```
 
 Use the native SSE configuration in your MCP client.
-
-### Stdio
-
-For local development, run the MCP server directly:
-
-```bash
-cd ace-platform
-source venv/bin/activate
-python -m ace_platform.mcp.server
-```
-
-Configure clients to use stdio transport.
 
 ## Quick Setup
 
@@ -226,32 +224,38 @@ After connecting the MCP server, you need to tell your agent *when* and *how* to
 This project uses ACE for self-improving AI instructions.
 The ACE MCP server is configured and available.
 
-### Available Playbooks
-
-| Task | Playbook ID | When to Use |
-|------|-------------|-------------|
-| Code reviews | `abc-123-def` | Before reviewing any PR or code changes |
-| Writing tests | `def-456-ghi` | When creating or updating test files |
-| Documentation | `ghi-789-jkl` | When writing or updating documentation |
-
 ### Workflow
 
-When performing tasks that have a matching playbook:
+For each new task (or when task intent changes materially):
 
-1. **Before starting**: Fetch the playbook using `get_playbook` with the appropriate ID
-2. **During the task**: Follow the playbook instructions carefully
-3. **After completing**: Record the outcome using `record_outcome` with:
-   - `outcome`: "success", "partial", or "failure"
-   - `task_description`: Brief description of what was done
-   - `notes`: Any relevant feedback about what worked or didn't
-4. **Check for evolution**: If an evolution was triggered, use `get_evolution_status` to report the results
+1. **Discover relevant playbooks first (semantic search)**
+   - Summarize the request as a concise task description
+   - Prefer `find_playbook(task_description="<task description>")` to get the best match
+   - If needed, use `list_playbooks(task="<task description>")` to review ranked alternatives
+   - If no relevant playbook is found, continue normally and do not force playbook usage
 
-### Example
+2. **Load playbook instructions before doing the task (Generator step)**
+   - Use `get_playbook(playbook_id="<selected id>")` for the selected playbook
+   - Read the playbook content before starting execution
+   - Apply those instructions during planning and implementation
 
-For a code review task:
-1. Call `get_playbook` with playbook_id `abc-123-def`
-2. Review the code following the playbook guidelines
-3. Call `record_outcome` with the results
+3. **Execute the task using the playbook guidance**
+   - Use one **primary** playbook for execution and outcome attribution
+   - If multiple playbooks are relevant, keep additional playbooks as supporting context only
+
+4. **Record outcomes automatically after task completion**
+   - Call `record_outcome` exactly once per completed, playbook-guided task
+   - Include all relevant fields:
+     - `playbook_id`: ID of the primary playbook used
+     - `task_description`: What was attempted, including scope and deliverable summary
+     - `outcome`: `success`, `partial`, or `failure`
+     - `notes`: What worked, what failed, key decisions, and blockers
+     - `reasoning_trace`: Concise summary of reasoning and tradeoffs
+   - If recording fails (permissions, validation, rate limit), report the error and continue helping the user
+
+5. **Check for evolution when applicable**
+   - If you manually call `trigger_evolution` and receive a Job ID, call `get_evolution_status(job_id=...)`
+   - Do not call `get_evolution_status` without a known Job ID
 ```
 
 ### Where to Add Instructions
@@ -259,61 +263,40 @@ For a code review task:
 | Agent Type | Location |
 |------------|----------|
 | Claude Code | `CLAUDE.md` in project root |
+| Codex | `AGENTS.md` in project root |
 | Claude Desktop | Project instructions or conversation |
 | Custom agents | System prompt or configuration file |
 | LangChain/LlamaIndex | Agent system message |
-| AutoGPT/similar | Goals or directives configuration |
 
 ### Tips for Effective Instructions
 
-1. **Be explicit about playbook IDs** - Agents can't guess which playbook to use
-2. **Define triggers clearly** - Specify what tasks should use which playbooks
-3. **Remind about outcomes** - Agents may forget to record outcomes without prompting
-4. **Keep it concise** - Long instructions may be ignored or truncated
+1. **Run discovery per task, not per message** - Reduces unnecessary calls while preserving relevance
+2. **Load playbook content before execution** - Retrieval without applying content does not improve outcomes
+3. **Use one primary playbook per task** - This keeps outcome attribution and evolution data clean
+4. **Capture rich outcome details** - Better `notes` and `reasoning_trace` improve future evolution quality
+5. **Keep it concise and explicit** - Short, direct instructions are more reliably followed
 
 ### Dynamic Playbook Discovery
 
-If you have many playbooks or they change frequently, instruct your agent to discover them:
-
-```markdown
-## Using ACE Playbooks
-
-Before starting any task, check for relevant playbooks:
-
-1. **Discover playbooks** - Use the `list_playbooks` tool to see available playbooks
-2. **Load relevant playbooks** - Use the `get_playbook` tool to fetch instructions for playbooks that match your current task
-3. **Follow the guidelines** - Apply the playbook instructions as you work
-
-After completing a task guided by a playbook:
-
-1. **Record the outcome** - Use the `record_outcome` tool with:
-   - `playbook_id`: The playbook you followed
-   - `task_description`: What you accomplished
-   - `outcome`: "success", "failure", or "partial"
-   - `notes`: What worked well, what didn't, and lessons learned
-
-2. **Check for evolution** - If an evolution was triggered, use `get_evolution_status` to report the results to the user
-```
-
-This approach is more flexible as it doesn't require maintaining a static list of playbook IDs.
+The **Recommended Instructions Template** above already includes dynamic, semantic playbook discovery and follow-up workflow steps. Use that template as the single source of truth to avoid duplicated or drifting instructions.
 
 ## Usage Patterns
 
 ### Using a Playbook
 
 ```
-1. List playbooks to find the right one
-2. Get playbook content
-3. Follow playbook instructions for task
-4. Record outcome after completion
+1. Find best playbook match for the task
+2. Get playbook content for the selected ID
+3. Execute task with one primary playbook
+4. Record one outcome after completion
 ```
 
 ### Evolution Workflow
 
 ```
 1. Use playbooks and record outcomes
-2. After enough outcomes, trigger evolution (or wait for auto)
-3. Check evolution status
+2. After enough outcomes, trigger evolution (or wait for auto-evolution)
+3. Check evolution status only when you have a job ID
 4. Get new version when complete
 ```
 
