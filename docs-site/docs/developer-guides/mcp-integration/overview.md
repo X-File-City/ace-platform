@@ -323,11 +323,13 @@ Common error message patterns:
 
 ## Best Practices
 
-1. **Cache playbook content** - Don't fetch before every use
-2. **Record outcomes consistently** - Even for successes
-3. **Handle errors gracefully** - Implement retries for transient failures
-4. **Use specific versions** - Pin versions for production stability
-5. **Monitor evolution** - Review new versions before relying on them
+1. **Discover playbooks semantically per task** - Use `find_playbook` (or `list_playbooks(task=...)`) when task intent changes
+2. **Load instructions before execution** - Fetch the selected playbook with `get_playbook` before planning and implementation
+3. **Use one primary playbook per task** - Keep outcome attribution clean and evolution signals high quality
+4. **Record one rich outcome per completed task** - Include `task_description`, `outcome`, `notes`, and `reasoning_trace`
+5. **Cache with refresh triggers** - Reuse playbook content, but refresh when task intent or target version changes
+6. **Retry selectively** - Retry transient/rate-limit failures; fix-and-retry auth, scope, validation, and subscription errors
+7. **Adopt new versions deliberately** - Pin versions for stable workflows and review evolved versions before relying on them
 
 ## Troubleshooting
 
