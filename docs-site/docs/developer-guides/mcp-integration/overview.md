@@ -295,24 +295,31 @@ The **Recommended Instructions Template** above already includes dynamic, semant
 
 ```
 1. Use playbooks and record outcomes
-2. After enough outcomes, trigger evolution (or wait for auto-evolution)
+2. After enough outcomes, trigger evolution (or wait for auto-evolution every 5 outcomes)
 3. Check evolution status only when you have a job ID
 4. Get new version when complete
 ```
 
 ## Error Handling
 
-MCP tools return error messages when something goes wrong.
+MCP tools return plain-text responses. Most failures begin with `Error:` (plus a few actionable non-`Error:` messages).
 
-Common error codes:
+Common error message patterns:
 
-| Code | Description |
-|------|-------------|
-| `unauthorized` | Invalid or missing API key |
-| `forbidden` | Insufficient scopes |
-| `not_found` | Resource doesn't exist |
-| `rate_limited` | Too many requests |
-| `invalid_request` | Malformed parameters |
+| Pattern | Meaning | Typical Action |
+|------|-------------|-------------|
+| `Error: No API key provided...` | Missing API key | Set `X-API-Key`, `Authorization: Bearer`, tool `api_key`, or `ACE_API_KEY` |
+| `Error: Invalid or revoked API key` | Bad or revoked key | Regenerate key and retry |
+| `Error: API key lacks '<scope>' scope` | Key missing required permission | Create/use a key with the needed scope |
+| `Error: ... not found` | Resource missing or inaccessible | Verify IDs and ownership |
+| `Error: Access denied - ... belongs to another user` | Resource exists but belongs to someone else | Use resources owned by the authenticated user |
+| `Error: Invalid ... format` / `Error: Invalid outcome status ...` | Invalid input values | Fix parameter format/value and retry |
+| `Error: ... is required ...` / `Error: ... exceeds maximum size ...` | Validation failure | Provide required fields and keep payloads within limits |
+| `Error: Rate limit exceeded ...` | Throttle reached | Wait and retry after the window resets |
+| `Error: Email verification required ...` | User email not verified | Verify email, then retry |
+| `Error: Start your free trial or subscribe to continue.` (and related subscription errors) | Account/subscription state blocks tool use | Start trial, subscribe, or fix billing status |
+| `Evolution blocked: A payment method is required ...` | Manual evolution blocked by payment method requirement | Add a card, then trigger evolution again |
+| `No playbooks found. Create one in the dashboard first.` | Valid call but user has no playbooks yet | Create a playbook before discovery/retrieval |
 
 ## Best Practices
 
