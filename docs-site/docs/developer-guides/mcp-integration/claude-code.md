@@ -249,7 +249,7 @@ Instead of one generic playbook, create focused ones:
 
 - First MCP call establishes connection (slower)
 - Subsequent calls should be faster
-- Consider local MCP server for development
+- Check your network connection to the MCP server
 
 ### Tools Not Found
 
