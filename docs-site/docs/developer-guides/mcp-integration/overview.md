@@ -337,11 +337,15 @@ Common error message patterns:
 
 - Check the MCP server URL
 - Verify network connectivity
-- Ensure API key is valid
+- Ensure your MCP client is configured for SSE transport to `https://aceagent.io/mcp/sse`
 
 ### Authentication Failed
 
-- Verify `ACE_API_KEY` env var or `X-API-Key` header is set correctly
+- Verify one authentication path is configured correctly:
+  - `X-API-Key` header
+  - `Authorization: Bearer <token>` header
+  - tool `api_key` parameter
+  - `ACE_API_KEY` environment variable
 - Check API key has required scopes
 - Ensure key isn't revoked
 
@@ -349,7 +353,15 @@ Common error message patterns:
 
 - Refresh MCP client connection
 - Check server version compatibility
-- Verify API key scopes include tool access
+- Verify your MCP client is connected to the ACE server and tools are loaded
+- Confirm you are calling valid tool names (for example: `list_playbooks`, `find_playbook`, `get_playbook`, `record_outcome`, `trigger_evolution`, `get_evolution_status`)
+
+### Access or Billing Blocked
+
+- If you see `Error: Email verification required ...`, verify your account email and retry
+- If you see `Error: Start your free trial or subscribe to continue.` (or related subscription errors), start a trial/subscribe or fix billing status
+- If you see `Evolution blocked: A payment method is required ...`, add a payment method, then retry `trigger_evolution`
+- If you see `No playbooks found. Create one in the dashboard first.`, create a playbook before running discovery/retrieval tools
 
 ## Next Steps
 
