@@ -293,32 +293,41 @@ The **Recommended Instructions Template** above already includes dynamic, semant
 
 ```
 1. Use playbooks and record outcomes
-2. After enough outcomes, trigger evolution (or wait for auto-evolution)
+2. After enough outcomes, trigger evolution (or wait for auto-evolution every 5 outcomes)
 3. Check evolution status only when you have a job ID
 4. Get new version when complete
 ```
 
 ## Error Handling
 
-MCP tools return error messages when something goes wrong.
+MCP tools return plain-text responses. Most failures begin with `Error:` (plus a few actionable non-`Error:` messages).
 
-Common error codes:
+Common error message patterns:
 
-| Code | Description |
-|------|-------------|
-| `unauthorized` | Invalid or missing API key |
-| `forbidden` | Insufficient scopes |
-| `not_found` | Resource doesn't exist |
-| `rate_limited` | Too many requests |
-| `invalid_request` | Malformed parameters |
+| Pattern | Meaning | Typical Action |
+|------|-------------|-------------|
+| `Error: No API key provided...` | Missing API key | Set `X-API-Key`, `Authorization: Bearer`, tool `api_key`, or `ACE_API_KEY` |
+| `Error: Invalid or revoked API key` | Bad or revoked key | Regenerate key and retry |
+| `Error: API key lacks '<scope>' scope` | Key missing required permission | Create/use a key with the needed scope |
+| `Error: ... not found` | Resource missing or inaccessible | Verify IDs and ownership |
+| `Error: Access denied - ... belongs to another user` | Resource exists but belongs to someone else | Use resources owned by the authenticated user |
+| `Error: Invalid ... format` / `Error: Invalid outcome status ...` | Invalid input values | Fix parameter format/value and retry |
+| `Error: ... is required ...` / `Error: ... exceeds maximum size ...` | Validation failure | Provide required fields and keep payloads within limits |
+| `Error: Rate limit exceeded ...` | Throttle reached | Wait and retry after the window resets |
+| `Error: Email verification required ...` | User email not verified | Verify email, then retry |
+| `Error: Start your free trial or subscribe to continue.` (and related subscription errors) | Account/subscription state blocks tool use | Start trial, subscribe, or fix billing status |
+| `Evolution blocked: A payment method is required ...` | Manual evolution blocked by payment method requirement | Add a card, then trigger evolution again |
+| `No playbooks found. Create one in the dashboard first.` | Valid call but user has no playbooks yet | Create a playbook before discovery/retrieval |
 
 ## Best Practices
 
-1. **Cache playbook content** - Don't fetch before every use
-2. **Record outcomes consistently** - Even for successes
-3. **Handle errors gracefully** - Implement retries for transient failures
-4. **Use specific versions** - Pin versions for production stability
-5. **Monitor evolution** - Review new versions before relying on them
+1. **Discover playbooks semantically per task** - Use `find_playbook` (or `list_playbooks(task=...)`) when task intent changes
+2. **Load instructions before execution** - Fetch the selected playbook with `get_playbook` before planning and implementation
+3. **Use one primary playbook per task** - Keep outcome attribution clean and evolution signals high quality
+4. **Record one rich outcome per completed task** - Include `task_description`, `outcome`, `notes`, and `reasoning_trace`
+5. **Cache with refresh triggers** - Reuse playbook content, but refresh when task intent or target version changes
+6. **Retry selectively** - Retry transient/rate-limit failures; fix-and-retry auth, scope, validation, and subscription errors
+7. **Adopt new versions deliberately** - Pin versions for stable workflows and review evolved versions before relying on them
 
 ## Troubleshooting
 
@@ -326,11 +335,15 @@ Common error codes:
 
 - Check the MCP server URL
 - Verify network connectivity
-- Ensure API key is valid
+- Ensure your MCP client is configured for SSE transport to `https://aceagent.io/mcp/sse`
 
 ### Authentication Failed
 
-- Verify `ACE_API_KEY` env var or `X-API-Key` header is set correctly
+- Verify one authentication path is configured correctly:
+  - `X-API-Key` header
+  - `Authorization: Bearer <token>` header
+  - tool `api_key` parameter
+  - `ACE_API_KEY` environment variable
 - Check API key has required scopes
 - Ensure key isn't revoked
 
@@ -338,7 +351,15 @@ Common error codes:
 
 - Refresh MCP client connection
 - Check server version compatibility
-- Verify API key scopes include tool access
+- Verify your MCP client is connected to the ACE server and tools are loaded
+- Confirm you are calling valid tool names (for example: `list_playbooks`, `find_playbook`, `get_playbook`, `record_outcome`, `trigger_evolution`, `get_evolution_status`)
+
+### Access or Billing Blocked
+
+- If you see `Error: Email verification required ...`, verify your account email and retry
+- If you see `Error: Start your free trial or subscribe to continue.` (or related subscription errors), start a trial/subscribe or fix billing status
+- If you see `Evolution blocked: A payment method is required ...`, add a payment method, then retry `trigger_evolution`
+- If you see `No playbooks found. Create one in the dashboard first.`, create a playbook before running discovery/retrieval tools
 
 ## Next Steps
 
