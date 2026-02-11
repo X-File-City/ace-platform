@@ -24,6 +24,7 @@ from ace_platform.core.limits import (
     get_tier_limits,
     get_user_usage_status,
 )
+from ace_platform.core.stripe_config import BillingInterval
 from ace_platform.db.models import User
 
 router = APIRouter(prefix="/billing", tags=["billing"])
@@ -79,6 +80,10 @@ class SubscribeRequest(BaseModel):
     """Request schema for subscribing to a plan."""
 
     tier: SubscriptionTier = Field(..., description="Subscription tier to subscribe to")
+    interval: BillingInterval = Field(
+        default=BillingInterval.MONTHLY,
+        description="Billing interval (month or year)",
+    )
     payment_method_id: str | None = Field(
         None, description="Stripe payment method ID (required for paid tiers)"
     )
@@ -262,6 +267,7 @@ async def subscribe(
             db=db,
             user=current_user,
             tier=request.tier,
+            interval=request.interval,
             include_trial=include_trial,
         )
 

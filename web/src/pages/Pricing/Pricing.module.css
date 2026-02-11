@@ -25,6 +25,54 @@
   margin: 0 auto;
 }
 
+.billingToggle {
+  width: fit-content;
+  margin: 0 auto var(--space-xl);
+  padding: 4px;
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+.toggleOption {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  transition: var(--transition-fast);
+}
+
+.toggleOption:hover {
+  color: var(--text-primary);
+}
+
+.toggleOptionActive {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  box-shadow: inset 0 0 0 1px var(--border-default);
+}
+
+.toggleDiscount {
+  background: rgba(77, 208, 175, 0.15);
+  border: 1px solid rgba(77, 208, 175, 0.4);
+  color: var(--success);
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 2px 6px;
+}
+
 /* Trial banner inside Starter card */
 .trialBanner {
   background: rgba(77, 208, 175, 0.1);
@@ -126,6 +174,29 @@
   font-family: var(--font-body);
   font-size: 1rem;
   color: var(--text-muted);
+}
+
+.discountBadge {
+  display: inline-flex;
+  margin-top: var(--space-sm);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(77, 208, 175, 0.4);
+  background: rgba(77, 208, 175, 0.12);
+  color: var(--success);
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.monthlyEquivalent {
+  margin-top: var(--space-sm);
+  margin-bottom: 0;
+  font-family: var(--font-body);
+  color: var(--text-muted);
+  font-size: 0.8125rem;
 }
 
 .cardDescription {
@@ -291,6 +362,12 @@
 @media (max-width: 768px) {
   .container {
     padding: var(--space-lg);
+  }
+
+  .billingToggle {
+    width: 100%;
+    max-width: 340px;
+    justify-content: center;
   }
 
   .header h1 {
