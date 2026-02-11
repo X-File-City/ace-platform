@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { AxiosError } from 'axios';
+import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { playbooksApi } from '../../utils/api';
 import { useAuth } from '../../contexts/AuthContext';
@@ -26,16 +27,24 @@ export function Dashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [mutationError, setMutationError] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   const queryClient = useQueryClient();
-  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const hasPaidAccess =
+    user?.subscription_status === 'active' &&
+    !!user.subscription_tier &&
+    user.subscription_tier !== 'free';
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['playbooks', statusFilter, isAuthenticated],
+    queryKey: ['playbooks', statusFilter, isAuthenticated, hasPaidAccess],
     queryFn: () => playbooksApi.list(1, 50, statusFilter || undefined),
-    enabled: !isAuthLoading && isAuthenticated,
+    enabled: !isAuthLoading && isAuthenticated && hasPaidAccess,
     staleTime: 0, // Always consider data stale to ensure fresh fetches
   });
+
+  const errorStatus = error instanceof AxiosError ? error.response?.status : undefined;
+  const shouldShowSubscriptionState = !hasPaidAccess || errorStatus === 402;
 
   const createMutation = useMutation({
     mutationFn: (newPlaybook: PlaybookCreate) => playbooksApi.create(newPlaybook),
@@ -116,6 +125,8 @@ export function Dashboard() {
           <div className={styles.spinner} />
           <span>Loading playbooks...</span>
         </div>
+      ) : shouldShowSubscriptionState ? (
+        <SubscriptionRequiredState onUpgradeClick={() => navigate('/pricing')} />
       ) : error ? (
         <div className={styles.error}>
           <AlertCircle size={24} />
@@ -139,6 +150,19 @@ export function Dashboard() {
           isLoading={createMutation.isPending}
         />
       )}
+    </div>
+  );
+}
+
+function SubscriptionRequiredState({ onUpgradeClick }: { onUpgradeClick: () => void }) {
+  return (
+    <div className={styles.emptyState}>
+      <div className={styles.emptyIcon}>
+        <AlertCircle size={48} />
+      </div>
+      <h2>Start Your Free Trial</h2>
+      <p>Start your free trial to access playbooks and create your first one.</p>
+      <Button onClick={onUpgradeClick}>Start Free Trial</Button>
     </div>
   );
 }

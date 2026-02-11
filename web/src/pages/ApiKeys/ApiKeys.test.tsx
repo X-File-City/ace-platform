@@ -5,30 +5,50 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter } from 'react-router-dom';
 import { ApiKeys } from './ApiKeys';
 
+const {
+  mockListApiKeys,
+  mockCreateApiKey,
+  mockDeleteApiKey,
+  mockAuthState,
+} = vi.hoisted(() => {
+  const refreshUser = vi.fn();
+  const mockAuthState: {
+    user: {
+      email_verified: boolean;
+      subscription_status: 'active' | 'past_due' | 'canceled' | 'unpaid' | 'none';
+      subscription_tier: string | null;
+      has_used_trial: boolean;
+    };
+    refreshUser: ReturnType<typeof vi.fn>;
+  } = {
+    user: {
+      email_verified: true,
+      subscription_status: 'active',
+      subscription_tier: 'starter',
+      has_used_trial: false,
+    },
+    refreshUser,
+  };
+
+  return {
+    mockListApiKeys: vi.fn(),
+    mockCreateApiKey: vi.fn(),
+    mockDeleteApiKey: vi.fn(),
+    mockAuthState,
+  };
+});
+
 // Mock the auth context
 vi.mock('../../contexts/AuthContext', () => ({
-  useAuth: () => ({
-    user: { email_verified: true },
-    refreshUser: vi.fn(),
-  }),
+  useAuth: () => mockAuthState,
 }));
 
 // Mock the API
 vi.mock('../../utils/api', () => ({
   apiKeysApi: {
-    list: vi.fn().mockResolvedValue([
-      {
-        id: 'key-1',
-        name: 'Test API Key',
-        key_prefix: 'ace_1234',
-        scopes: ['playbooks:read', 'playbooks:write'],
-        created_at: '2024-01-15T10:00:00Z',
-        last_used_at: null,
-        is_active: true,
-      },
-    ]),
-    create: vi.fn(),
-    delete: vi.fn(),
+    list: mockListApiKeys,
+    create: mockCreateApiKey,
+    delete: mockDeleteApiKey,
   },
 }));
 
@@ -51,6 +71,23 @@ function renderWithProviders(ui: React.ReactElement) {
 describe('ApiKeys', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockAuthState.user = {
+      email_verified: true,
+      subscription_status: 'active',
+      subscription_tier: 'starter',
+      has_used_trial: false,
+    };
+    mockListApiKeys.mockResolvedValue([
+      {
+        id: 'key-1',
+        name: 'Test API Key',
+        key_prefix: 'ace_1234',
+        scopes: ['playbooks:read', 'playbooks:write'],
+        created_at: '2024-01-15T10:00:00Z',
+        last_used_at: null,
+        is_active: true,
+      },
+    ]);
   });
 
   describe('Setup Guide Button', () => {
@@ -95,6 +132,44 @@ describe('ApiKeys', () => {
       expect(
         screen.getByText(/Connect your AI coding assistant to ACE Platform/)
       ).toBeInTheDocument();
+    });
+  });
+
+  describe('Subscription and Verification States', () => {
+    it('shows a trial prompt instead of a load error for users without paid access', async () => {
+      mockAuthState.user = {
+        email_verified: true,
+        subscription_status: 'none',
+        subscription_tier: null,
+        has_used_trial: false,
+      };
+
+      renderWithProviders(<ApiKeys />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Start Your Free Trial')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByText('Failed to load API keys')).not.toBeInTheDocument();
+      expect(mockListApiKeys).not.toHaveBeenCalled();
+    });
+
+    it('does not fetch API keys for unverified users', async () => {
+      mockAuthState.user = {
+        email_verified: false,
+        subscription_status: 'active',
+        subscription_tier: 'starter',
+        has_used_trial: false,
+      };
+
+      renderWithProviders(<ApiKeys />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Email verification required')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByText('Failed to load API keys')).not.toBeInTheDocument();
+      expect(mockListApiKeys).not.toHaveBeenCalled();
     });
   });
 
