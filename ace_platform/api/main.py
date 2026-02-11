@@ -424,7 +424,10 @@ def _register_routes(app: FastAPI) -> None:
     @app.get("/.well-known/oauth-authorization-server")
     async def well_known_oauth_not_found():
         return JSONResponse(
-            {"error": "invalid_request", "error_description": "OAuth is not supported by this server"},
+            {
+                "error": "invalid_request",
+                "error_description": "OAuth is not supported by this server",
+            },
             status_code=404,
         )
 
