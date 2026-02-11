@@ -35,7 +35,6 @@ const sidebars: SidebarsConfig = {
             'developer-guides/mcp-integration/claude-code',
           ],
         },
-        'developer-guides/authentication',
         'developer-guides/recording-outcomes',
       ],
     },
