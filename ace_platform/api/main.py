@@ -415,6 +415,19 @@ def _register_routes(app: FastAPI) -> None:
     mcp_sse_app_with_auth = HeaderAuthMiddleware(mcp_sse_app)
     app.mount("/mcp", app=mcp_sse_app_with_auth, name="mcp")
 
+    # OAuth discovery endpoints - return OAuth-spec-compatible 404 responses.
+    # Claude Code's MCP client performs OAuth discovery (RFC 9728) before
+    # connecting to SSE endpoints. FastAPI's default 404 body {"detail":"Not Found"}
+    # doesn't match the expected OAuth error format {"error":"..."}, causing a
+    # ZodError in the client. These endpoints return spec-compliant 404s.
+    @app.get("/.well-known/oauth-protected-resource")
+    @app.get("/.well-known/oauth-authorization-server")
+    async def well_known_oauth_not_found():
+        return JSONResponse(
+            {"error": "invalid_request", "error_description": "OAuth is not supported by this server"},
+            status_code=404,
+        )
+
     @app.get("/health", tags=["Health"])
     async def health_check():
         """Check if the API is running.
