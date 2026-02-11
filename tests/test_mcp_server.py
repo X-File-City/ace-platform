@@ -145,6 +145,154 @@ class TestValidateScopes:
         assert result == []
 
 
+class TestFlyReplayMiddleware:
+    """Tests for Fly.io session affinity middleware."""
+
+    @pytest.fixture
+    def dummy_app(self):
+        """ASGI app that records calls and returns configurable responses."""
+
+        class DummyApp:
+            def __init__(self):
+                self.called = False
+                self.status_code = 200
+                self.body = b"OK"
+                self.scope = None
+
+            async def __call__(self, scope, receive, send):
+                self.called = True
+                self.scope = scope
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": self.status_code,
+                        "headers": [],
+                    }
+                )
+                await send({"type": "http.response.body", "body": self.body})
+
+        return DummyApp()
+
+    @staticmethod
+    async def _collect_response(app, scope, receive=None):
+        """Call an ASGI app and collect the response parts."""
+        parts = []
+
+        async def send(message):
+            parts.append(message)
+
+        async def default_receive():
+            return {"type": "http.request", "body": b""}
+
+        await app(scope, receive or default_receive, send)
+        return parts
+
+    def test_noop_without_fly_machine_id(self, dummy_app):
+        """Middleware passes through when FLY_MACHINE_ID is not set."""
+        import asyncio
+
+        from ace_platform.mcp.server import FlyReplayMiddleware
+
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("FLY_MACHINE_ID", None)
+            mw = FlyReplayMiddleware(dummy_app)
+
+        scope = {"type": "http", "path": "/mcp/messages/", "query_string": b"session_id=abc"}
+        asyncio.get_event_loop().run_until_complete(self._collect_response(mw, scope))
+        assert dummy_app.called
+
+    def test_noop_for_non_http(self, dummy_app):
+        """Middleware passes through for non-HTTP scopes."""
+        import asyncio
+
+        from ace_platform.mcp.server import FlyReplayMiddleware
+
+        with patch.dict(os.environ, {"FLY_MACHINE_ID": "machine-a"}):
+            mw = FlyReplayMiddleware(dummy_app)
+
+        scope = {"type": "lifespan"}
+        asyncio.get_event_loop().run_until_complete(self._collect_response(mw, scope))
+        assert dummy_app.called
+
+    def test_messages_passthrough_same_instance(self, dummy_app):
+        """POST to /messages/ with matching fly_instance passes through."""
+        import asyncio
+
+        from ace_platform.mcp.server import FlyReplayMiddleware
+
+        with patch.dict(os.environ, {"FLY_MACHINE_ID": "machine-a"}):
+            mw = FlyReplayMiddleware(dummy_app)
+
+        scope = {
+            "type": "http",
+            "path": "/mcp/messages/",
+            "query_string": b"session_id=abc&fly_instance=machine-a",
+        }
+        asyncio.get_event_loop().run_until_complete(self._collect_response(mw, scope))
+        assert dummy_app.called
+
+    def test_messages_replay_different_instance(self, dummy_app):
+        """POST to /messages/ with different fly_instance returns fly-replay header."""
+        import asyncio
+
+        from ace_platform.mcp.server import FlyReplayMiddleware
+
+        with patch.dict(os.environ, {"FLY_MACHINE_ID": "machine-a"}):
+            mw = FlyReplayMiddleware(dummy_app)
+
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/mcp/messages/",
+            "query_string": b"session_id=abc&fly_instance=machine-b",
+            "headers": [],
+        }
+        parts = asyncio.get_event_loop().run_until_complete(self._collect_response(mw, scope))
+        assert not dummy_app.called
+        # Check for fly-replay header
+        start = parts[0]
+        assert start["status"] == 404
+        headers = dict(start.get("headers", []))
+        assert headers.get(b"fly-replay") == b"instance=machine-b"
+
+    def test_messages_passthrough_no_fly_instance(self, dummy_app):
+        """POST to /messages/ without fly_instance param passes through normally."""
+        import asyncio
+
+        from ace_platform.mcp.server import FlyReplayMiddleware
+
+        with patch.dict(os.environ, {"FLY_MACHINE_ID": "machine-a"}):
+            mw = FlyReplayMiddleware(dummy_app)
+
+        scope = {
+            "type": "http",
+            "path": "/mcp/messages/",
+            "query_string": b"session_id=abc",
+        }
+        asyncio.get_event_loop().run_until_complete(self._collect_response(mw, scope))
+        assert dummy_app.called
+
+    def test_sse_injects_fly_instance_on_endpoint_data_line(self, dummy_app):
+        """SSE endpoint response has fly_instance appended to endpoint data URL."""
+        import asyncio
+
+        from ace_platform.mcp.server import FlyReplayMiddleware
+
+        # Make the dummy app return an SSE-like body
+        dummy_app.body = b"event: endpoint\r\ndata: /mcp/messages/?session_id=abc123\r\n\r\n"
+
+        with patch.dict(os.environ, {"FLY_MACHINE_ID": "machine-a"}):
+            mw = FlyReplayMiddleware(dummy_app)
+
+        scope = {"type": "http", "path": "/mcp/sse", "query_string": b""}
+        parts = asyncio.get_event_loop().run_until_complete(self._collect_response(mw, scope))
+        body_part = next(p for p in parts if p.get("type") == "http.response.body")
+        body_text = body_part["body"].decode("utf-8")
+        assert "event: endpoint\r\n" in body_text
+        assert "event: endpoint&fly_instance=machine-a" not in body_text
+        assert "data: /mcp/messages/?session_id=abc123&fly_instance=machine-a\r\n" in body_text
+
+
 # Integration tests require PostgreSQL
 pytestmark_integration = pytest.mark.skipif(
     not RUN_INTEGRATION_TESTS,

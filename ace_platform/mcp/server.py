@@ -23,7 +23,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 from mcp.server.fastmcp import Context, FastMCP
@@ -76,6 +76,90 @@ ACE_BULLET_PATTERN = r"\[[^\]]+\]\s*helpful=\d+\s*harmful=\d+\s*::"
 # Context variable for storing API key extracted from HTTP headers
 # This allows tools to access the API key without it being passed as a parameter
 _request_api_key: ContextVar[str | None] = ContextVar("request_api_key", default=None)
+
+
+class FlyReplayMiddleware:
+    """ASGI middleware for Fly.io session affinity with MCP SSE transport.
+
+    When running multiple API machines on Fly.io, SSE sessions are stored
+    in-memory on the machine that established the connection. Subsequent
+    POST requests to /messages/ may be routed to a different machine,
+    causing "Could not find session" errors.
+
+    This middleware solves the problem by:
+    1. Injecting the current machine's FLY_MACHINE_ID into the SSE endpoint
+       URL sent to clients (as a &fly_instance= query parameter).
+    2. On POST requests to /messages/, if the session is not found locally
+       and the fly_instance param points to a different machine, responding
+       with a fly-replay header so Fly's proxy retries on the correct machine.
+
+    Outside Fly.io (no FLY_MACHINE_ID env var), this middleware is a no-op.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+        self.machine_id = os.environ.get("FLY_MACHINE_ID", "")
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or not self.machine_id:
+            await self.app(scope, receive, send)
+            return
+
+        path = scope.get("path", "")
+        normalized_path = path.rstrip("/") or "/"
+
+        # For SSE endpoint: inject fly_instance into the endpoint event
+        if normalized_path.endswith("/sse"):
+            await self._handle_sse(scope, receive, send)
+            return
+
+        # For messages endpoint: intercept 404 and replay if needed
+        if normalized_path.endswith("/messages"):
+            await self._handle_messages(scope, receive, send)
+            return
+
+        await self.app(scope, receive, send)
+
+    async def _handle_sse(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Intercept SSE response to append fly_instance to the endpoint URL."""
+
+        async def send_wrapper(message: Any) -> None:
+            if message.get("type") == "http.response.body":
+                body = message.get("body", b"")
+                if isinstance(body, bytes):
+                    text = body.decode("utf-8", errors="replace")
+                    # Append fly_instance to the endpoint event URL.
+                    # Endpoint data line looks like:
+                    # data: /mcp/messages/?session_id=abc123
+                    if "session_id=" in text and "fly_instance=" not in text:
+                        text = re.sub(
+                            r"(data:\s*)([^\r\n]*session_id=[^\r\n]*)",
+                            lambda m: f"{m.group(1)}{m.group(2)}&fly_instance={self.machine_id}",
+                            text,
+                            count=1,
+                        )
+                        message = {**message, "body": text.encode("utf-8")}
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
+
+    async def _handle_messages(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Intercept 404 on messages endpoint and replay to correct machine."""
+        request = Request(scope)
+        target_instance = request.query_params.get("fly_instance", "")
+
+        # If the request is for this machine (or no instance specified), pass through
+        if not target_instance or target_instance == self.machine_id:
+            await self.app(scope, receive, send)
+            return
+
+        # The request is meant for a different machine — replay it
+        response = Response(
+            "Session on another instance",
+            status_code=404,
+            headers={"fly-replay": f"instance={target_instance}"},
+        )
+        await response(scope, receive, send)
 
 
 class HeaderAuthMiddleware:
