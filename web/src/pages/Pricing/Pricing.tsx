@@ -7,10 +7,9 @@ import styles from './Pricing.module.css';
 
 type BillingInterval = 'month' | 'year';
 
-const YEARLY_DISCOUNT = 0.1;
-
 interface PricingTierTemplate extends Omit<PricingTier, 'price' | 'period'> {
   monthlyPrice: number;
+  yearlyPrice: number;
 }
 
 const PRICING_TIERS: PricingTierTemplate[] = [
@@ -18,6 +17,7 @@ const PRICING_TIERS: PricingTierTemplate[] = [
     id: 'starter',
     name: 'Starter',
     monthlyPrice: 9,
+    yearlyPrice: 90,
     description: 'Perfect for individuals getting started',
     features: [
       '100 evolution runs/month',
@@ -31,6 +31,7 @@ const PRICING_TIERS: PricingTierTemplate[] = [
     id: 'pro',
     name: 'Pro',
     monthlyPrice: 29,
+    yearlyPrice: 290,
     description: 'For professionals who need more power',
     features: [
       '500 evolution runs/month',
@@ -45,6 +46,7 @@ const PRICING_TIERS: PricingTierTemplate[] = [
     id: 'ultra',
     name: 'Ultra',
     monthlyPrice: 79,
+    yearlyPrice: 790,
     description: 'Maximum power for demanding workflows',
     features: [
       '2,000 evolution runs/month',
@@ -67,15 +69,13 @@ const getDisplayTiers = (interval: BillingInterval): PricingTier[] => {
       };
     }
 
-    const yearlyPrice = Number((tier.monthlyPrice * 12 * (1 - YEARLY_DISCOUNT)).toFixed(2));
-
     return {
       ...tier,
-      price: yearlyPrice,
+      price: tier.yearlyPrice,
       period: 'year',
       buttonPeriodLabel: 'yr',
-      discountLabel: '10% off',
-      monthlyEquivalent: Number((yearlyPrice / 12).toFixed(2)),
+      discountLabel: '16.7% off',
+      monthlyEquivalent: Number((tier.yearlyPrice / 12).toFixed(2)),
     };
   });
 };
@@ -154,7 +154,7 @@ export function Pricing() {
           onClick={() => setBillingInterval('year')}
         >
           Yearly
-          <span className={styles.toggleDiscount}>Save 10%</span>
+          <span className={styles.toggleDiscount}>Save 16.7%</span>
         </button>
       </div>
 
