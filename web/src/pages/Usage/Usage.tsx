@@ -1,6 +1,8 @@
+import { AxiosError } from 'axios';
 import { useQuery } from '@tanstack/react-query';
 import { evolutionsApi } from '../../utils/api';
 import { Card } from '../../components/ui/Card';
+import { useAuth } from '../../contexts/AuthContext';
 import {
   Activity,
   BookOpen,
@@ -20,28 +22,51 @@ import styles from './Usage.module.css';
 import { useNavigate } from 'react-router-dom';
 
 export function Usage() {
+  const { user, isLoading: isAuthLoading } = useAuth();
+  const hasPaidAccess =
+    user?.subscription_status === 'active' &&
+    !!user.subscription_tier &&
+    user.subscription_tier !== 'free';
+
   const summaryQuery = useQuery<EvolutionSummary>({
     queryKey: ['evolution-summary'],
     queryFn: evolutionsApi.getSummary,
+    enabled: !isAuthLoading && hasPaidAccess,
   });
 
   const dailyQuery = useQuery<DailyEvolution[]>({
     queryKey: ['evolution-daily'],
     queryFn: () => evolutionsApi.getDaily(30),
+    enabled: !isAuthLoading && hasPaidAccess,
   });
 
   const playbookQuery = useQuery<PlaybookEvolutionStats[]>({
     queryKey: ['evolution-by-playbook'],
     queryFn: () => evolutionsApi.getByPlaybook(5),
+    enabled: !isAuthLoading && hasPaidAccess,
   });
 
   const recentQuery = useQuery<RecentEvolution[]>({
     queryKey: ['evolution-recent'],
     queryFn: () => evolutionsApi.getRecent(10),
+    enabled: !isAuthLoading && hasPaidAccess,
   });
 
+  const queryErrors = [
+    summaryQuery.error,
+    dailyQuery.error,
+    playbookQuery.error,
+    recentQuery.error,
+  ];
+  const hasSubscriptionError = queryErrors.some(
+    (err) => err instanceof AxiosError && err.response?.status === 402
+  );
   const isLoading =
-    summaryQuery.isLoading || dailyQuery.isLoading || playbookQuery.isLoading || recentQuery.isLoading;
+    isAuthLoading ||
+    summaryQuery.isLoading ||
+    dailyQuery.isLoading ||
+    playbookQuery.isLoading ||
+    recentQuery.isLoading;
   const isError =
     summaryQuery.isError || dailyQuery.isError || playbookQuery.isError || recentQuery.isError;
 
@@ -71,6 +96,8 @@ export function Usage() {
           <div className={styles.spinner} />
           <span>Loading activity data...</span>
         </div>
+      ) : !hasPaidAccess || hasSubscriptionError ? (
+        <SubscriptionState />
       ) : isError ? (
         <ErrorState onRetry={handleRetry} />
       ) : !hasAnyData ? (
@@ -378,6 +405,23 @@ function EmptyState() {
       </p>
       <button className={styles.emptyButton} onClick={() => navigate('/dashboard')}>
         Go to Playbooks
+      </button>
+    </div>
+  );
+}
+
+function SubscriptionState() {
+  const navigate = useNavigate();
+
+  return (
+    <div className={styles.emptyState}>
+      <div className={styles.emptyIcon}>
+        <AlertCircle size={48} />
+      </div>
+      <h2>Start Your Free Trial</h2>
+      <p>Start your free trial to view usage activity and evolution analytics.</p>
+      <button className={styles.emptyButton} onClick={() => navigate('/pricing')}>
+        Start Free Trial
       </button>
     </div>
   );

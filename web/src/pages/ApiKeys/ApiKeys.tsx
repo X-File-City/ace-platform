@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
+import { AxiosError } from 'axios';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { apiKeysApi } from '../../utils/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
@@ -34,6 +35,7 @@ const AVAILABLE_SCOPES = [
 
 export function ApiKeys() {
   const { user, refreshUser } = useAuth();
+  const navigate = useNavigate();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showVerificationModal, setShowVerificationModal] = useState(false);
   const [showSetupDocsModal, setShowSetupDocsModal] = useState(false);
@@ -42,6 +44,11 @@ export function ApiKeys() {
 
   const queryClient = useQueryClient();
   const isEmailVerified = user?.email_verified ?? false;
+  const hasPaidAccess =
+    user?.subscription_status === 'active' &&
+    !!user.subscription_tier &&
+    user.subscription_tier !== 'free';
+  const hasUsedTrial = user?.has_used_trial ?? false;
 
   // Refresh user data on mount to get latest verification status
   useEffect(() => {
@@ -57,9 +64,14 @@ export function ApiKeys() {
   };
 
   const { data: apiKeys, isLoading, error } = useQuery({
-    queryKey: ['api-keys'],
+    queryKey: ['api-keys', isEmailVerified, hasPaidAccess],
     queryFn: apiKeysApi.list,
+    enabled: isEmailVerified && hasPaidAccess,
   });
+
+  const apiKeyList = apiKeys ?? [];
+  const errorStatus = error instanceof AxiosError ? error.response?.status : undefined;
+  const shouldShowSubscriptionState = !hasPaidAccess || errorStatus === 402;
 
   const createMutation = useMutation({
     mutationFn: (data: ApiKeyCreate) => apiKeysApi.create(data),
@@ -146,16 +158,21 @@ export function ApiKeys() {
           <div className={styles.spinner} />
           <span>Loading API keys...</span>
         </div>
+      ) : shouldShowSubscriptionState ? (
+        <SubscriptionRequiredState
+          hasUsedTrial={hasUsedTrial}
+          onUpgradeClick={() => navigate('/pricing')}
+        />
       ) : error ? (
         <div className={styles.error}>
           <AlertCircle size={24} />
           <span>Failed to load API keys</span>
         </div>
-      ) : apiKeys?.length === 0 ? (
+      ) : apiKeyList.length === 0 ? (
         <EmptyState onCreateClick={handleCreateClick} />
       ) : (
         <div className={styles.keysList}>
-          {apiKeys?.map((key) => (
+          {apiKeyList.map((key) => (
             <ApiKeyCard
               key={key.id}
               apiKey={key}
@@ -190,6 +207,29 @@ export function ApiKeys() {
       {showSetupDocsModal && (
         <SetupDocsModal onClose={() => setShowSetupDocsModal(false)} />
       )}
+    </div>
+  );
+}
+
+function SubscriptionRequiredState({
+  hasUsedTrial,
+  onUpgradeClick,
+}: {
+  hasUsedTrial: boolean;
+  onUpgradeClick: () => void;
+}) {
+  return (
+    <div className={styles.emptyState}>
+      <div className={styles.emptyIcon}>
+        <Key size={48} />
+      </div>
+      <h2>{hasUsedTrial ? 'Upgrade to Access API Keys' : 'Start Your Free Trial'}</h2>
+      <p>
+        {hasUsedTrial
+          ? 'Your trial has ended. Upgrade your plan to create and manage API keys.'
+          : 'Start your free trial to create and manage API keys.'}
+      </p>
+      <Button onClick={onUpgradeClick}>{hasUsedTrial ? 'View Plans' : 'Start Free Trial'}</Button>
     </div>
   );
 }
