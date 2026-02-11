@@ -4,7 +4,7 @@ sidebar_position: 3
 
 # Claude Code Setup
 
-Integrate ACE with Claude Code (Anthropic's CLI) for AI-assisted development with self-improving playbooks.
+Integrate ACE with Claude Code for AI-assisted development with self-improving playbooks.
 
 ## Prerequisites
 
@@ -18,59 +18,51 @@ Integrate ACE with Claude Code (Anthropic's CLI) for AI-assisted development wit
 
 1. Go to [app.aceagent.io](https://app.aceagent.io)
 2. Navigate to **API Keys**
-3. Create a key with scopes:
-   - `playbooks:read` - Required
-   - `playbooks:write` - For creating/editing playbooks
-   - `outcomes:write` - For recording outcomes
-   - `evolution:write` - For triggering evolution
+3. Create a key with all scopes enabled:
+   - `playbooks:read` - List and read playbooks
+   - `playbooks:write` - Create playbooks and versions
+   - `outcomes:write` - Record task outcomes
+   - `evolution:write` - Trigger evolution
+   - `evolution:read` - Check evolution status
 
-### Step 2: Configure MCP Server
+### Step 2: Add the MCP Server
 
-Add ACE to your Claude Code MCP settings.
+The fastest way to add ACE is with the `claude mcp add` command:
 
-**Global settings** (`~/.claude/settings.json`):
-
-```json
-{
-  "mcpServers": {
-    "ace": {
-      "type": "sse",
-      "url": "https://aceagent.io/mcp/sse",
-      "headers": {
-        "X-API-Key": "YOUR_API_KEY"
-      }
-    }
-  }
-}
+```bash
+claude mcp add --transport sse ace https://aceagent.io/mcp/sse \
+  --header "X-API-Key: YOUR_API_KEY"
 ```
 
-**Project settings** (`.claude/settings.json` in project root):
+This adds the server to your **local** scope (current project only) by default.
 
-```json
-{
-  "mcpServers": {
-    "ace": {
-      "type": "sse",
-      "url": "https://aceagent.io/mcp/sse",
-      "headers": {
-        "X-API-Key": "YOUR_API_KEY"
-      }
-    }
-  }
-}
+**To make it available across all projects**, use `--scope user`:
+
+```bash
+claude mcp add --transport sse --scope user ace https://aceagent.io/mcp/sse \
+  --header "X-API-Key: YOUR_API_KEY"
+```
+
+**To share it with your team**, use `--scope project` (adds to `.mcp.json` in your project root):
+
+```bash
+claude mcp add --transport sse --scope project ace https://aceagent.io/mcp/sse \
+  --header "X-API-Key: YOUR_API_KEY"
 ```
 
 ### Step 3: Verify Setup
 
-Start Claude Code and check MCP servers:
+Start Claude Code and check the MCP server is connected:
 
-```bash
-claude
+```
+> /mcp
 ```
 
-Then ask:
+This shows all connected MCP servers and their status. Then test it:
 
+```
 > "List my ACE playbooks"
+```
 
 ## Using ACE with Claude Code
 
@@ -86,12 +78,6 @@ Claude: [Fetches playbook, reviews code following guidelines]
 ```
 You: "Using my documentation playbook, document the API in src/api/"
 Claude: [Follows playbook instructions to create docs]
-```
-
-**Refactoring:**
-```
-You: "Get my refactoring playbook and suggest improvements for utils.ts"
-Claude: [Analyzes code using playbook guidelines]
 ```
 
 ### Recording Outcomes
@@ -119,57 +105,24 @@ Claude: [Reports evolution progress/completion]
 
 ## Project-Specific Playbooks
 
-Store playbook IDs in your project's CLAUDE.md for quick reference:
+Store playbook IDs in your project's `CLAUDE.md` for quick reference:
 
 ```markdown
-# Project Playbooks
+## ACE Playbooks
 
-## Code Review
-Playbook ID: `abc-123-def`
-Use for: All PR reviews
-
-## Documentation
-Playbook ID: `ghi-456-jkl`
-Use for: API and README updates
+| Task | Playbook ID | When to Use |
+|------|-------------|-------------|
+| Code reviews | `abc-123-def` | All PR reviews |
+| Documentation | `ghi-456-jkl` | API and README updates |
 ```
 
 Then reference them in conversations:
 
 > "Using playbook abc-123-def, review the changes in src/"
 
-## Automation with Hooks
-
-Claude Code supports hooks that can automate ACE workflows.
-
-### Post-Task Outcome Recording
-
-Create a hook that prompts for outcome recording:
-
-```json
-{
-  "hooks": {
-    "post_task": {
-      "prompt": "If you used an ACE playbook for this task, offer to record an outcome."
-    }
-  }
-}
-```
-
-### Pre-Review Playbook Fetch
-
-```json
-{
-  "hooks": {
-    "code_review": {
-      "prompt": "First fetch the appropriate code review playbook from ACE before reviewing."
-    }
-  }
-}
-```
-
 ## Using Environment Variables
 
-Keep API keys out of config files by using environment variable substitution:
+Keep API keys out of shared config files using environment variable expansion in `.mcp.json`:
 
 ```json
 {
@@ -188,56 +141,25 @@ Keep API keys out of config files by using environment variable substitution:
 Set in your shell profile:
 
 ```bash
-export ACE_API_KEY="ace_live_..."
+export ACE_API_KEY="ace_..."
 ```
-
-## Best Practices
-
-### 1. Use Playbooks for Repetitive Tasks
-
-Good candidates:
-- Code reviews
-- Documentation generation
-- Test writing
-- API design
-- Security audits
-
-### 2. Record Outcomes Consistently
-
-After every playbook-guided task:
-
-```
-You: "Record outcome: success, task was reviewing auth module,
-caught timing attack vulnerability"
-```
-
-### 3. Review Evolution Changes
-
-When evolution completes:
-
-```
-You: "Get playbook abc-123 and compare to version 2"
-```
-
-### 4. Create Task-Specific Playbooks
-
-Instead of one generic playbook, create focused ones:
-- `code-review-security`
-- `code-review-performance`
-- `code-review-typescript`
 
 ## Troubleshooting
 
 ### MCP Server Not Loading
 
-1. Check settings file syntax:
+1. Check server status with `/mcp` inside Claude Code
+2. Verify the server was added:
    ```bash
-   cat ~/.claude/settings.json | jq .
+   claude mcp list
    ```
-
-2. Verify the URL is correct: `https://aceagent.io/mcp/sse`
-
-3. Check your API key is set in the `headers` section
+3. Verify the URL is correct: `https://aceagent.io/mcp/sse`
+4. Try removing and re-adding:
+   ```bash
+   claude mcp remove ace
+   claude mcp add --transport sse ace https://aceagent.io/mcp/sse \
+     --header "X-API-Key: YOUR_API_KEY"
+   ```
 
 ### Authentication Errors
 
@@ -247,33 +169,17 @@ Instead of one generic playbook, create focused ones:
 
 ### Slow Tool Responses
 
-- First MCP call establishes connection (slower)
+- First MCP call establishes the connection (slower)
 - Subsequent calls should be faster
 - Check your network connection to the MCP server
 
 ### Tools Not Found
 
-- Restart Claude Code
-- Check MCP server is properly configured
+- Run `/mcp` to check server status
 - Verify API key scopes include tool access
-
-## Integration with Git Workflows
-
-### Pre-Commit Review
-
-```bash
-# In your pre-commit hook
-claude "Using my code-review playbook, review the staged changes"
-```
-
-### PR Description Generation
-
-```bash
-claude "Using my documentation playbook, generate a PR description for these changes"
-```
+- Try restarting Claude Code
 
 ## Next Steps
 
-- [Build custom MCP agents](/docs/developer-guides/mcp-integration/custom-agents)
 - [Recording effective outcomes](/docs/developer-guides/recording-outcomes)
 - [Managing API keys](/docs/user-guides/managing-api-keys)

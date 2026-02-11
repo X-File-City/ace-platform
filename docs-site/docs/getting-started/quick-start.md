@@ -54,7 +54,6 @@ Add the ACE MCP server to your client's config with the endpoint `https://aceage
 
 - [Claude Desktop setup](/docs/developer-guides/mcp-integration/claude-desktop)
 - [Claude Code setup](/docs/developer-guides/mcp-integration/claude-code)
-- [Custom agents / any MCP client](/docs/developer-guides/mcp-integration/custom-agents)
 
 See the [MCP Integration Overview](/docs/developer-guides/mcp-integration/overview) for full configuration details.
 

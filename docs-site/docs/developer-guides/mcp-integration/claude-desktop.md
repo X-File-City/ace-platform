@@ -8,7 +8,7 @@ Connect Claude Desktop to ACE to access your playbooks directly in conversations
 
 ## Prerequisites
 
-- [Claude Desktop](https://claude.ai/download) installed
+- [Claude Desktop](https://claude.ai/download) installed (macOS or Windows)
 - ACE account with verified email
 - API key with `playbooks:read` scope (minimum)
 
@@ -18,33 +18,25 @@ Connect Claude Desktop to ACE to access your playbooks directly in conversations
 
 1. Go to [app.aceagent.io](https://app.aceagent.io)
 2. Navigate to **API Keys**
-3. Create a key with these scopes:
-   - `playbooks:read` - Required
-   - `outcomes:write` - Recommended
-   - `evolution:read` - Optional
+3. Create a key with all scopes enabled:
+   - `playbooks:read` - List and read playbooks
+   - `playbooks:write` - Create playbooks and versions
+   - `outcomes:write` - Record task outcomes
+   - `evolution:write` - Trigger evolution
+   - `evolution:read` - Check evolution status
 
-### Step 2: Locate Config File
+### Step 2: Open Config File
 
-Find your Claude Desktop configuration file:
+1. Open Claude Desktop
+2. Click the **Settings** icon
+3. Select the **Developer** tab
+4. Click **Edit Config**
 
-**macOS:**
-```
-~/Library/Application Support/Claude/claude_desktop_config.json
-```
-
-**Windows:**
-```
-%APPDATA%\Claude\claude_desktop_config.json
-```
-
-**Linux:**
-```
-~/.config/Claude/claude_desktop_config.json
-```
+This opens `claude_desktop_config.json` in your default editor.
 
 ### Step 3: Add MCP Server
 
-Edit the config file to add the ACE MCP server:
+Add the ACE MCP server to the config file:
 
 ```json
 {
@@ -77,16 +69,17 @@ In Claude Desktop, ask:
 > "What ACE tools are available?"
 
 Claude should list the available tools:
-- `list_playbooks`
+- `list_playbooks` / `find_playbook`
 - `get_playbook`
+- `create_playbook` / `create_version`
 - `record_outcome`
-- etc.
+- `trigger_evolution` / `get_evolution_status`
 
 ### Test a Tool
 
 Try listing your playbooks:
 
-> "Use the ACE list_playbooks tool to show my playbooks"
+> "List my ACE playbooks"
 
 ## Using ACE in Claude Desktop
 
@@ -100,10 +93,7 @@ Claude will use `get_playbook` and display the content.
 
 > "Using my code review playbook, review this code: [paste code]"
 
-Claude will:
-1. Fetch the playbook
-2. Follow the instructions
-3. Provide a review
+Claude will fetch the playbook, follow the instructions, and provide a review.
 
 ### Record an Outcome
 
@@ -112,31 +102,6 @@ After a task:
 > "Record an outcome for the code review playbook. It was successful and caught a security issue."
 
 Claude will use `record_outcome` with your feedback.
-
-## Multiple Environments
-
-Configure different environments by using multiple MCP servers:
-
-```json
-{
-  "mcpServers": {
-    "ace-prod": {
-      "type": "sse",
-      "url": "https://aceagent.io/mcp/sse",
-      "headers": {
-        "X-API-Key": "PROD_API_KEY"
-      }
-    },
-    "ace-staging": {
-      "type": "sse",
-      "url": "https://ace-platform-staging.fly.dev/mcp/sse",
-      "headers": {
-        "X-API-Key": "STAGING_API_KEY"
-      }
-    }
-  }
-}
-```
 
 ## Workflow Examples
 
@@ -149,7 +114,7 @@ Claude: [Fetches playbook content]
 You: "Review this PR: [paste diff]"
 Claude: [Follows playbook, provides review]
 
-You: "That was great, the review caught an injection bug. Record this as a successful outcome."
+You: "Record this as a successful outcome - the review caught an injection bug."
 Claude: [Records outcome with your notes]
 ```
 
@@ -166,24 +131,16 @@ You: "Record this as partial success - good structure but missed error cases"
 Claude: [Records partial outcome]
 ```
 
-## Tips for Claude Desktop
+## Tips
 
-### Be Explicit About Tools
+### Provide Detailed Outcomes
 
-Claude may not automatically use MCP tools. Be direct:
+When recording outcomes, include specifics so evolution has good data to work with:
 
-✅ "Use the ACE get_playbook tool..."
-✅ "Record an outcome using ACE..."
+- "Record a successful outcome. The review caught 3 bugs and provided clear improvement suggestions."
+- "Record this as partial - the structure was good but it missed edge cases in the error handling."
 
-❌ "Get my playbook" (may not trigger tool use)
-
-### Provide Context
-
-When recording outcomes, include details:
-
-✅ "Record a successful outcome. The review caught 3 bugs and provided clear improvement suggestions."
-
-❌ "It went well" (too vague for evolution)
+Vague feedback like "it went well" won't help evolution improve the playbook.
 
 ### Use Playbook Sections
 
@@ -195,10 +152,10 @@ Request specific sections for focused tasks:
 
 ### Tools Not Appearing
 
-1. **Check config file location** - Ensure it's the correct path
+1. **Check config file** - Open via Settings > Developer > Edit Config
 2. **Validate JSON syntax** - Use a JSON validator
 3. **Verify URL is correct** - `https://aceagent.io/mcp/sse`
-4. **Restart Claude Desktop** - Full quit, not just close
+4. **Restart Claude Desktop** - Full quit, not just close window
 
 ### Authentication Errors
 
@@ -206,27 +163,12 @@ Request specific sections for focused tasks:
 - **"Forbidden"** - Verify key has required scopes
 - **"Invalid token"** - Verify API key format is correct
 
-### Connection Issues
-
-Check Claude Desktop logs for debug output.
-
 ### Slow Response
 
-MCP uses SSE which can have latency:
-- First request may take 2-3 seconds
+- First MCP request may take 2-3 seconds to establish the connection
 - Subsequent requests should be faster
-- Consider caching playbook content in conversation
 
 ## Security Considerations
-
-### Protect Your Config File
-
-The config file contains your API key:
-
-```bash
-# macOS/Linux
-chmod 600 ~/Library/Application\ Support/Claude/claude_desktop_config.json
-```
 
 ### Use Minimum Scopes
 
@@ -242,7 +184,7 @@ For full workflow:
 1. Create new key in dashboard
 2. Update config file
 3. Restart Claude Desktop
-4. Revoke old key
+4. Delete old key
 
 ## Next Steps
 
