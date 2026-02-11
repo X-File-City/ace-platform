@@ -39,7 +39,7 @@ describe('Pricing', () => {
     });
   });
 
-  it('toggles to yearly pricing with a 16.7% discount and sends yearly interval when subscribing', async () => {
+  it('toggles to yearly pricing with a 17% discount and sends yearly interval when subscribing', async () => {
     const user = userEvent.setup();
     render(<Pricing />);
 
@@ -48,7 +48,7 @@ describe('Pricing', () => {
     await user.click(screen.getByRole('button', { name: /yearly/i }));
 
     expect(screen.getByRole('button', { name: 'Subscribe - $290/yr' })).toBeInTheDocument();
-    expect(screen.getAllByText('16.7% off').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('17% off').length).toBeGreaterThan(0);
     expect(screen.getAllByText('/year').length).toBeGreaterThan(0);
 
     await user.click(screen.getByRole('button', { name: 'Subscribe - $290/yr' }));
