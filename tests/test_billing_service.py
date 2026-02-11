@@ -21,6 +21,7 @@ from ace_platform.core.billing import (
     get_subscription_tier_features,
 )
 from ace_platform.core.limits import SubscriptionTier
+from ace_platform.core.stripe_config import BillingInterval
 
 
 class TestCheckoutSessionResult:
@@ -247,6 +248,43 @@ class TestCreateCheckoutSession:
 
         assert result.success is False
         assert "Stripe error" in result.error
+
+    @pytest.mark.asyncio
+    @patch("ace_platform.core.billing._get_stripe_client")
+    @patch("ace_platform.core.billing.get_or_create_stripe_customer")
+    @patch("ace_platform.core.billing.get_price_id_for_tier")
+    @patch("ace_platform.core.billing.is_stripe_configured")
+    async def test_yearly_checkout_uses_year_interval(
+        self, mock_configured, mock_get_price, mock_get_customer, mock_get_client
+    ):
+        """Test yearly checkout requests the yearly Stripe price and metadata."""
+        mock_configured.return_value = True
+        mock_get_price.return_value = "price_pro_yearly"
+        mock_get_customer.return_value = "cus_test123"
+
+        mock_client = MagicMock()
+        mock_session = MagicMock()
+        mock_session.url = "https://checkout.stripe.com/test-yearly"
+        mock_session.id = "cs_test_yearly"
+        mock_client.checkout.sessions.create.return_value = mock_session
+        mock_get_client.return_value = mock_client
+
+        mock_db = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.id = uuid4()
+
+        result = await create_checkout_session(
+            db=mock_db,
+            user=mock_user,
+            tier=SubscriptionTier.PRO,
+            interval=BillingInterval.YEARLY,
+        )
+
+        assert result.success is True
+        mock_get_price.assert_called_once_with(SubscriptionTier.PRO, BillingInterval.YEARLY)
+
+        params = mock_client.checkout.sessions.create.call_args.kwargs["params"]
+        assert params["metadata"]["interval"] == BillingInterval.YEARLY.value
 
 
 class TestCreateBillingPortalSession:

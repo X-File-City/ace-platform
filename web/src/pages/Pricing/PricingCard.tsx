@@ -6,10 +6,13 @@ export interface PricingTier {
   name: string;
   price: number;
   period: string;
+  buttonPeriodLabel?: string;
   description: string;
   features: string[];
   highlighted?: string[];
   isPopular?: boolean;
+  discountLabel?: string;
+  monthlyEquivalent?: number;
 }
 
 interface PricingCardProps {
@@ -21,11 +24,15 @@ interface PricingCardProps {
 }
 
 export function PricingCard({ tier, isCurrentPlan, isLoading, onSubscribe, showTrialCTA }: PricingCardProps) {
+  const formatPrice = (price: number) => {
+    return Number.isInteger(price) ? `${price}` : price.toFixed(2);
+  };
+
   const getButtonText = () => {
     if (isLoading) return 'Processing...';
     if (isCurrentPlan) return 'Current Plan';
     if (showTrialCTA && tier.id === 'starter') return 'Start 7-Day Free Trial';
-    return `Subscribe - $${tier.price}/mo`;
+    return `Subscribe - $${formatPrice(tier.price)}/${tier.buttonPeriodLabel || tier.period}`;
   };
 
   const getButtonClass = () => {
@@ -41,9 +48,17 @@ export function PricingCard({ tier, isCurrentPlan, isLoading, onSubscribe, showT
       <div className={styles.cardHeader}>
         <h3 className={styles.tierName}>{tier.name}</h3>
         <div className={styles.price}>
-          <span className={styles.priceAmount}>${tier.price}</span>
+          <span className={styles.priceAmount}>${formatPrice(tier.price)}</span>
           <span className={styles.pricePeriod}>/{tier.period}</span>
         </div>
+        {tier.discountLabel && (
+          <span className={styles.discountBadge}>{tier.discountLabel}</span>
+        )}
+        {tier.monthlyEquivalent && (
+          <p className={styles.monthlyEquivalent}>
+            ${formatPrice(tier.monthlyEquivalent)}/month equivalent
+          </p>
+        )}
         <p className={styles.cardDescription}>{tier.description}</p>
         {isCurrentPlan && (
           <span className={styles.currentPlanBadge}>

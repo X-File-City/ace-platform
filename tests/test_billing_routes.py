@@ -26,6 +26,7 @@ from ace_platform.api.routes.billing import (
     UsageResponse,
 )
 from ace_platform.core.limits import SubscriptionTier
+from ace_platform.core.stripe_config import BillingInterval
 
 
 class TestBillingSchemas:
@@ -158,15 +159,18 @@ class TestBillingSchemas:
         """Test subscribe request schema."""
         request = SubscribeRequest(
             tier=SubscriptionTier.STARTER,
+            interval=BillingInterval.YEARLY,
             payment_method_id="pm_test123",
         )
         assert request.tier == SubscriptionTier.STARTER
+        assert request.interval == BillingInterval.YEARLY
         assert request.payment_method_id == "pm_test123"
 
     def test_subscribe_request_free_tier(self):
         """Test subscribe request for free tier (no payment method)."""
         request = SubscribeRequest(tier=SubscriptionTier.FREE)
         assert request.tier == SubscriptionTier.FREE
+        assert request.interval == BillingInterval.MONTHLY
         assert request.payment_method_id is None
 
     def test_subscribe_response_success(self):

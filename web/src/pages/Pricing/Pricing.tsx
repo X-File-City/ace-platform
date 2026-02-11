@@ -5,12 +5,19 @@ import { api } from '../../utils/api';
 import { PricingCard, type PricingTier } from './PricingCard';
 import styles from './Pricing.module.css';
 
-const PRICING_TIERS: PricingTier[] = [
+type BillingInterval = 'month' | 'year';
+
+const YEARLY_DISCOUNT = 0.1;
+
+interface PricingTierTemplate extends Omit<PricingTier, 'price' | 'period'> {
+  monthlyPrice: number;
+}
+
+const PRICING_TIERS: PricingTierTemplate[] = [
   {
     id: 'starter',
     name: 'Starter',
-    price: 9,
-    period: 'month',
+    monthlyPrice: 9,
     description: 'Perfect for individuals getting started',
     features: [
       '100 evolution runs/month',
@@ -23,8 +30,7 @@ const PRICING_TIERS: PricingTier[] = [
   {
     id: 'pro',
     name: 'Pro',
-    price: 29,
-    period: 'month',
+    monthlyPrice: 29,
     description: 'For professionals who need more power',
     features: [
       '500 evolution runs/month',
@@ -38,8 +44,7 @@ const PRICING_TIERS: PricingTier[] = [
   {
     id: 'ultra',
     name: 'Ultra',
-    price: 79,
-    period: 'month',
+    monthlyPrice: 79,
     description: 'Maximum power for demanding workflows',
     features: [
       '2,000 evolution runs/month',
@@ -51,6 +56,30 @@ const PRICING_TIERS: PricingTier[] = [
   },
 ];
 
+const getDisplayTiers = (interval: BillingInterval): PricingTier[] => {
+  return PRICING_TIERS.map((tier) => {
+    if (interval === 'month') {
+      return {
+        ...tier,
+        price: tier.monthlyPrice,
+        period: 'month',
+        buttonPeriodLabel: 'mo',
+      };
+    }
+
+    const yearlyPrice = Number((tier.monthlyPrice * 12 * (1 - YEARLY_DISCOUNT)).toFixed(2));
+
+    return {
+      ...tier,
+      price: yearlyPrice,
+      period: 'year',
+      buttonPeriodLabel: 'yr',
+      discountLabel: '10% off',
+      monthlyEquivalent: Number((yearlyPrice / 12).toFixed(2)),
+    };
+  });
+};
+
 interface SubscribeResponse {
   success: boolean;
   message: string;
@@ -60,11 +89,13 @@ interface SubscribeResponse {
 
 export function Pricing() {
   const { user } = useAuth();
+  const [billingInterval, setBillingInterval] = useState<BillingInterval>('month');
   const [loadingTier, setLoadingTier] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const currentTier = user?.subscription_tier?.toLowerCase() || 'free';
   const canUseTrial = !user?.has_used_trial;
+  const displayedTiers = getDisplayTiers(billingInterval);
 
   const handleSubscribe = async (tierId: string) => {
     setError(null);
@@ -73,6 +104,7 @@ export function Pricing() {
     try {
       const response = await api.post<SubscribeResponse>('/billing/subscribe', {
         tier: tierId,
+        interval: billingInterval,
       });
 
       if (response.data.checkout_url) {
@@ -104,6 +136,28 @@ export function Pricing() {
         <p>Scale your playbook evolution with the right plan for your needs</p>
       </div>
 
+      <div className={styles.billingToggle} role="group" aria-label="Billing interval">
+        <button
+          type="button"
+          className={`${styles.toggleOption} ${
+            billingInterval === 'month' ? styles.toggleOptionActive : ''
+          }`}
+          onClick={() => setBillingInterval('month')}
+        >
+          Monthly
+        </button>
+        <button
+          type="button"
+          className={`${styles.toggleOption} ${
+            billingInterval === 'year' ? styles.toggleOptionActive : ''
+          }`}
+          onClick={() => setBillingInterval('year')}
+        >
+          Yearly
+          <span className={styles.toggleDiscount}>Save 10%</span>
+        </button>
+      </div>
+
       {error && (
         <div className={styles.error}>
           <AlertCircle size={20} />
@@ -112,7 +166,7 @@ export function Pricing() {
       )}
 
       <div className={styles.grid}>
-        {PRICING_TIERS.map((tier) => (
+        {displayedTiers.map((tier) => (
           <PricingCard
             key={tier.id}
             tier={tier}
