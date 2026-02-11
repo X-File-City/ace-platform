@@ -74,7 +74,7 @@ const getDisplayTiers = (interval: BillingInterval): PricingTier[] => {
       price: tier.yearlyPrice,
       period: 'year',
       buttonPeriodLabel: 'yr',
-      discountLabel: '16.7% off',
+      discountLabel: '17% off',
       monthlyEquivalent: Number((tier.yearlyPrice / 12).toFixed(2)),
     };
   });
@@ -154,7 +154,7 @@ export function Pricing() {
           onClick={() => setBillingInterval('year')}
         >
           Yearly
-          <span className={styles.toggleDiscount}>Save 16.7%</span>
+          <span className={styles.toggleDiscount}>Save 17%</span>
         </button>
       </div>
 
