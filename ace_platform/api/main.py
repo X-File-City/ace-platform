@@ -499,33 +499,37 @@ def _register_routes(app: FastAPI) -> None:
     async def landing_page():
         """Serve the landing page."""
         frontend_url = settings.frontend_url.rstrip("/")
+        docs_url = settings.docs_url.rstrip("/")
         html = """<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ACE Platform - Self-Improving AI Playbooks</title>
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800&family=Cormorant+Garamond:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <title>ACE - Playbooks as a Service</title>
+    <meta name="description" content="Self-improving AI instructions. Record outcomes, and ACE automatically evolves your playbooks based on real-world results.">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800&family=Cormorant+Garamond:wght@300;400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         :root {
             --bg-primary: #fdfcfa;
-            --bg-secondary: #f5f3ee;
-            --bg-card: #ffffff;
+            --bg-surface: #ffffff;
+            --bg-muted: #f8f6f1;
+            --bg-hero: linear-gradient(180deg, #fdfcfa 0%, #f5f3ee 100%);
             --ink-primary: #1a1a1a;
             --text-secondary: #4a4a4a;
             --text-tertiary: #7a7a7a;
             --accent-primary: #c41e3a;
-            --accent-secondary: #a31830;
+            --accent-dark: #a31830;
             --gold-primary: #b8860b;
-            --border-default: rgba(0, 0, 0, 0.12);
-            --border-gold: rgba(184, 134, 11, 0.4);
-            --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
-            --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.1), 0 4px 8px rgba(0, 0, 0, 0.06);
+            --border-subtle: rgba(0, 0, 0, 0.08);
+            --border-default: rgba(0, 0, 0, 0.1);
+            --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.08);
+            --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.12);
             --font-display: 'Playfair Display', Georgia, serif;
             --font-body: 'Cormorant Garamond', Garamond, serif;
+            --font-mono: 'Fira Code', SFMono-Regular, Menlo, Monaco, Consolas, monospace;
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        html { font-size: 16px; -webkit-font-smoothing: antialiased; }
+        html { font-size: 16px; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
         body {
             font-family: var(--font-body);
             font-size: 1.0625rem;
@@ -534,7 +538,6 @@ def _register_routes(app: FastAPI) -> None:
             background: var(--bg-primary);
             min-height: 100vh;
         }
-        /* Subtle pattern overlay */
         body::before {
             content: '';
             position: fixed;
@@ -542,248 +545,380 @@ def _register_routes(app: FastAPI) -> None:
             background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 0L30 60M0 30L60 30M0 0L60 60M60 0L0 60' stroke='%23000000' stroke-width='0.2' fill='none' opacity='0.02'/%3E%3C/svg%3E");
             opacity: 0.5;
             pointer-events: none;
-            z-index: -1;
+            z-index: 0;
         }
-        .container {
-            max-width: 1100px;
+
+        /* Navbar */
+        .navbar {
+            background: var(--bg-surface);
+            border-bottom: 1px solid var(--border-subtle);
+            box-shadow: var(--shadow-sm);
+            height: 4rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .navbar-inner {
+            max-width: 1200px;
             margin: 0 auto;
-            padding: 2rem;
-        }
-        header {
+            padding: 0 2rem;
             display: flex;
+            align-items: center;
             justify-content: space-between;
-            align-items: center;
-            padding: 1.5rem 0;
-            border-bottom: 1px solid var(--border-default);
-            margin-bottom: 2rem;
+            height: 100%;
         }
-        .logo {
+        .navbar-brand {
             display: flex;
             align-items: center;
-            gap: 0.75rem;
-        }
-        .logo-text {
-            font-family: var(--font-display);
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: var(--ink-primary);
-            letter-spacing: -0.02em;
-        }
-        nav a {
-            font-family: var(--font-display);
-            color: var(--text-secondary);
+            gap: 0.5rem;
             text-decoration: none;
-            margin-left: 2rem;
-            font-size: 0.9375rem;
+        }
+        .navbar-logo {
+            width: 28px;
+            height: 28px;
+        }
+        .navbar-title {
+            font-family: var(--font-display);
+            font-weight: 700;
+            font-size: 1.25rem;
+            color: var(--ink-primary);
+            letter-spacing: -0.01em;
+        }
+        .navbar-links {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+        }
+        .navbar-links a {
+            font-family: var(--font-display);
             font-weight: 500;
+            font-size: 0.9375rem;
+            color: #2d2d2d;
+            text-decoration: none;
             transition: color 0.2s;
         }
-        nav a:hover { color: var(--accent-primary); }
+        .navbar-links a:hover { color: var(--accent-primary); }
+
+        /* Hero */
         .hero {
+            background: var(--bg-hero);
+            border-bottom: 1px solid var(--border-subtle);
+            padding: 6rem 2rem;
             text-align: center;
-            padding: 5rem 0;
+            position: relative;
         }
-        h1 {
+        .hero-title {
             font-family: var(--font-display);
-            font-size: 3.25rem;
+            font-size: 3.5rem;
             font-weight: 700;
             color: var(--ink-primary);
-            margin-bottom: 1.5rem;
+            margin-bottom: 1rem;
             letter-spacing: -0.02em;
             line-height: 1.15;
         }
-        .subtitle {
+        .hero-subtitle {
             font-family: var(--font-body);
-            font-size: 1.375rem;
+            font-size: 1.5rem;
             color: var(--text-secondary);
-            margin-bottom: 2.5rem;
+            margin-bottom: 2rem;
             max-width: 600px;
             margin-left: auto;
             margin-right: auto;
             line-height: 1.6;
         }
-        .cta-buttons {
+        .hero-buttons {
             display: flex;
-            gap: 1rem;
+            align-items: center;
             justify-content: center;
+            gap: 1rem;
             flex-wrap: wrap;
         }
         .btn {
             font-family: var(--font-display);
-            padding: 0.875rem 2rem;
-            border-radius: 8px;
-            font-size: 0.9375rem;
-            font-weight: 600;
-            text-decoration: none;
+            font-weight: 500;
             letter-spacing: 0.02em;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            border: 1px solid transparent;
+            padding: 0.75rem 2rem;
+            border-radius: 8px;
+            font-size: 1rem;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 250ms cubic-bezier(0.4, 0, 0.2, 1);
+            border: 2px solid transparent;
+            cursor: pointer;
         }
         .btn-primary {
             background: var(--accent-primary);
             color: #fff;
-            box-shadow: 0 2px 8px rgba(196, 30, 58, 0.2);
+            border-color: var(--accent-primary);
         }
         .btn-primary:hover {
-            background: var(--accent-secondary);
-            transform: translateY(-2px);
-            box-shadow: 0 4px 16px rgba(196, 30, 58, 0.3);
+            background: var(--accent-dark);
+            border-color: var(--accent-dark);
+            box-shadow: 0 4px 12px rgba(196, 30, 58, 0.3);
         }
         .btn-secondary {
             background: transparent;
-            color: var(--ink-primary);
-            border-color: var(--border-default);
+            color: var(--accent-primary);
+            border-color: var(--accent-primary);
         }
         .btn-secondary:hover {
-            border-color: var(--gold-primary);
-            color: var(--gold-primary);
+            background: rgba(196, 30, 58, 0.05);
+            color: var(--accent-dark);
         }
-        .divider {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            color: var(--text-tertiary);
-            margin: 4rem 0;
-        }
-        .divider::before, .divider::after {
-            content: '';
-            flex: 1;
-            height: 1px;
-            background: linear-gradient(90deg, transparent, var(--border-default), transparent);
-        }
-        .divider span { font-size: 1.25rem; }
+
+        /* Features */
         .features {
+            padding: 4rem 2rem;
+            background: var(--bg-surface);
+        }
+        .features-inner {
+            max-width: 1100px;
+            margin: 0 auto;
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            grid-template-columns: repeat(3, 1fr);
             gap: 2rem;
-            padding: 2rem 0 4rem;
         }
         .feature {
-            background: var(--bg-card);
-            padding: 2rem;
-            border-radius: 10px;
-            border: 1px solid var(--border-default);
-            box-shadow: var(--shadow-card);
-            position: relative;
-            transition: all 0.3s ease;
+            text-align: center;
+            padding: 1.5rem;
         }
-        .feature:hover {
-            box-shadow: var(--shadow-lg);
-            border-color: var(--border-gold);
+        .feature-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            line-height: 1;
         }
-        /* Card corner decorations */
-        .feature::before, .feature::after {
-            content: '';
-            position: absolute;
-            width: 16px;
-            height: 16px;
-            border: 2px solid var(--ink-primary);
-            opacity: 0.1;
-            transition: opacity 0.3s;
-        }
-        .feature::before {
-            top: 8px;
-            left: 8px;
-            border-right: none;
-            border-bottom: none;
-        }
-        .feature::after {
-            bottom: 8px;
-            right: 8px;
-            border-left: none;
-            border-top: none;
-        }
-        .feature:hover::before, .feature:hover::after { opacity: 0.25; }
-        .feature h3 {
+        .feature:nth-child(1) .feature-icon { color: var(--ink-primary); }
+        .feature:nth-child(2) .feature-icon,
+        .feature:nth-child(3) .feature-icon { color: var(--accent-primary); }
+        .feature-title {
             font-family: var(--font-display);
-            color: var(--accent-primary);
-            margin-bottom: 0.75rem;
             font-size: 1.25rem;
             font-weight: 600;
+            color: var(--ink-primary);
+            margin-bottom: 0.75rem;
         }
-        .feature p {
+        .feature-desc {
+            font-family: var(--font-body);
+            font-size: 1rem;
             color: var(--text-secondary);
-            line-height: 1.7;
+            line-height: 1.6;
         }
-        footer {
+
+        /* Quick Links */
+        .quick-links {
+            padding: 4rem 2rem;
+            background: var(--bg-muted);
+            border-top: 1px solid rgba(0, 0, 0, 0.06);
+        }
+        .quick-links-inner {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+        .section-title {
+            font-family: var(--font-display);
+            font-size: 2rem;
+            font-weight: 600;
+            color: var(--ink-primary);
             text-align: center;
-            padding: 3rem 0;
-            border-top: 1px solid var(--border-default);
-            color: var(--text-tertiary);
+            margin-bottom: 2rem;
+        }
+        .link-cards {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+        }
+        .link-card {
+            display: block;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-default);
+            border-radius: 10px;
+            padding: 1.5rem;
+            text-decoration: none;
+            transition: all 250ms ease;
+        }
+        .link-card:hover {
+            border-color: var(--accent-primary);
+            box-shadow: 0 4px 12px rgba(196, 30, 58, 0.1);
+            transform: translateY(-2px);
+        }
+        .link-card h3 {
+            font-family: var(--font-display);
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: var(--ink-primary);
+            margin-bottom: 0.5rem;
+        }
+        .link-card p {
+            font-family: var(--font-body);
             font-size: 0.9375rem;
+            color: var(--text-secondary);
+            margin: 0;
         }
-        /* Ace card logo SVG */
-        .ace-card {
-            width: 36px;
-            height: 50px;
+
+        /* Footer */
+        .footer {
+            background: var(--bg-muted);
+            border-top: 1px solid var(--border-subtle);
+            padding: 3rem 2rem 2rem;
         }
-        @media (max-width: 768px) {
-            h1 { font-size: 2.25rem; }
-            .subtitle { font-size: 1.125rem; }
-            .hero { padding: 3rem 0; }
+        .footer-inner {
+            max-width: 1100px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+        .footer-col h4 {
+            font-family: var(--font-display);
+            font-weight: 600;
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
+        }
+        .footer-col ul {
+            list-style: none;
+        }
+        .footer-col li {
+            margin-bottom: 0.5rem;
+        }
+        .footer-col a {
+            font-family: var(--font-body);
+            font-size: 0.9375rem;
+            color: #2d2d2d;
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+        .footer-col a:hover { color: var(--accent-primary); }
+        .footer-copyright {
+            text-align: center;
+            padding-top: 2rem;
+            border-top: 1px solid var(--border-subtle);
+            font-family: var(--font-body);
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        /* Responsive */
+        @media (max-width: 996px) {
+            .hero { padding: 4rem 2rem; }
+            .hero-title { font-size: 2.5rem; }
+            .hero-subtitle { font-size: 1.25rem; }
+            .features-inner { grid-template-columns: 1fr; }
+            .feature { margin-bottom: 1rem; }
+            .link-cards { grid-template-columns: 1fr; }
+            .footer-inner { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 576px) {
+            .hero-buttons { flex-direction: column; }
+            .btn { width: 100%; text-align: center; }
+            .navbar-links { gap: 1rem; }
+            .navbar-links a { font-size: 0.8125rem; }
+        }
+
+        /* Selection */
+        ::selection {
+            background: rgba(196, 30, 58, 0.2);
+            color: var(--ink-primary);
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <div class="logo">
-                <svg class="ace-card" viewBox="0 0 40 56" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="1" y="1" width="38" height="54" rx="4" fill="#ffffff" stroke="rgba(184,134,11,0.4)" stroke-width="1.5"/>
-                    <rect x="4" y="4" width="32" height="48" rx="2" fill="none" stroke="#b8860b" stroke-width="0.5" opacity="0.3"/>
-                    <text x="7" y="14" fill="#1a1a1a" font-size="9" font-family="Playfair Display, serif" font-weight="700">A</text>
-                    <g transform="translate(20, 28)">
-                        <path d="M0 -12C0 -12 -8 -3 -8 3C-8 6 -6 8.5 -3 8.5C-1.5 8.5 -0.5 7.8 0 7C0.5 7.8 1.5 8.5 3 8.5C6 8.5 8 6 8 3C8 -3 0 -12 0 -12Z" fill="#1a1a1a"/>
-                        <path d="M-2.5 7L-3.5 12H3.5L2.5 7" fill="#1a1a1a"/>
+    <nav class="navbar">
+        <div class="navbar-inner">
+            <a href="/" class="navbar-brand">
+                <svg class="navbar-logo" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="1" y="1" width="26" height="26" rx="4" fill="#ffffff" stroke="rgba(184,134,11,0.4)" stroke-width="1"/>
+                    <text x="7" y="12" fill="#1a1a1a" font-size="7" font-family="Playfair Display, serif" font-weight="700">A</text>
+                    <g transform="translate(14, 18)">
+                        <path d="M0 -6.5C0 -6.5 -4.5 -1.5 -4.5 1.8C-4.5 3.4 -3.4 4.8 -1.7 4.8C-0.8 4.8 -0.3 4.4 0 3.9C0.3 4.4 0.8 4.8 1.7 4.8C3.4 4.8 4.5 3.4 4.5 1.8C4.5 -1.5 0 -6.5 0 -6.5Z" fill="#1a1a1a"/>
                     </g>
-                    <path d="M4 8L4 4L8 4" stroke="#b8860b" stroke-width="1" fill="none" opacity="0.6"/>
-                    <path d="M36 8L36 4L32 4" stroke="#b8860b" stroke-width="1" fill="none" opacity="0.6"/>
-                    <path d="M4 48L4 52L8 52" stroke="#b8860b" stroke-width="1" fill="none" opacity="0.6"/>
-                    <path d="M36 48L36 52L32 52" stroke="#b8860b" stroke-width="1" fill="none" opacity="0.6"/>
                 </svg>
-                <span class="logo-text">ACE</span>
+                <span class="navbar-title">ACE</span>
+            </a>
+            <div class="navbar-links">
+                <a href="{{DOCS_URL}}/docs">Documentation</a>
+                <a href="{{FRONTEND_URL}}">Dashboard</a>
             </div>
-            <nav>
-                <a href="/health">Status</a>
-            </nav>
-        </header>
+        </div>
+    </nav>
 
-        <section class="hero">
-            <h1>AI Playbooks That<br>Improve Themselves</h1>
-            <p class="subtitle">
-                Create context for your AI agents that gets smarter the more you use it.
-                ACE automatically captures what works and evolves your playbooks.
-            </p>
-            <div class="cta-buttons">
-                <a href="{{FRONTEND_URL}}/login" class="btn btn-primary">Get Started</a>
-                <a href="#features" class="btn btn-secondary">Learn More</a>
-            </div>
-        </section>
+    <section class="hero">
+        <h1 class="hero-title">ACE</h1>
+        <p class="hero-subtitle">Playbooks as a Service &mdash; Self-improving AI instructions</p>
+        <div class="hero-buttons">
+            <a href="{{FRONTEND_URL}}/login" class="btn btn-primary">Get Started</a>
+            <a href="{{DOCS_URL}}/docs/developer-guides/mcp-integration/overview" class="btn btn-secondary">MCP Integration</a>
+        </div>
+    </section>
 
-        <div class="divider"><span>&#9824;</span></div>
-
-        <section class="features" id="features">
+    <section class="features">
+        <div class="features-inner">
             <div class="feature">
-                <h3>Self-Improving Context</h3>
-                <p>Your playbooks evolve based on real outcomes. The more you use them, the better they get at guiding your AI agents.</p>
-            </div>
-            <div class="feature">
-                <h3>MCP Integration</h3>
-                <p>Connect to any AI assistant that supports the Model Context Protocol. Your playbooks become living context that travels with you.</p>
+                <div class="feature-icon">&spades;</div>
+                <h3 class="feature-title">Self-Improving Playbooks</h3>
+                <p class="feature-desc">Record outcomes after each task, and ACE automatically evolves your playbooks based on real-world results. The more you use them, the better they get.</p>
             </div>
             <div class="feature">
-                <h3>Outcome Tracking</h3>
-                <p>ACE watches what works and what doesn't, automatically incorporating successful patterns into your playbooks.</p>
+                <div class="feature-icon">&hearts;</div>
+                <h3 class="feature-title">MCP Integration</h3>
+                <p class="feature-desc">Connect directly to Claude Desktop, Claude Code, or any MCP-compatible agent. Access playbooks without writing integration code.</p>
             </div>
-        </section>
+            <div class="feature">
+                <div class="feature-icon">&diams;</div>
+                <h3 class="feature-title">Version Control Built-In</h3>
+                <p class="feature-desc">Every change creates a new version. Compare diffs, understand improvements, and roll back if needed. Full history at your fingertips.</p>
+            </div>
+        </div>
+    </section>
 
-        <footer>
-            &copy; 2026 ACE Platform. Built for developers who want their AI to get smarter.
-        </footer>
-    </div>
+    <section class="quick-links">
+        <div class="quick-links-inner">
+            <h2 class="section-title">Quick Links</h2>
+            <div class="link-cards">
+                <a href="{{DOCS_URL}}/docs/getting-started/quick-start" class="link-card">
+                    <h3>Quick Start</h3>
+                    <p>Get up and running in 5 minutes</p>
+                </a>
+                <a href="{{DOCS_URL}}/docs/developer-guides/mcp-integration/claude-code" class="link-card">
+                    <h3>Claude Code Setup</h3>
+                    <p>Integrate with Claude Code CLI</p>
+                </a>
+                <a href="{{DOCS_URL}}/docs/developer-guides/recording-outcomes" class="link-card">
+                    <h3>Recording Outcomes</h3>
+                    <p>Feed ACE the feedback it needs to evolve</p>
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <footer class="footer">
+        <div class="footer-inner">
+            <div class="footer-col">
+                <h4>Documentation</h4>
+                <ul>
+                    <li><a href="{{DOCS_URL}}/docs/getting-started/quick-start">Getting Started</a></li>
+                    <li><a href="{{DOCS_URL}}/docs/user-guides/creating-playbooks">User Guides</a></li>
+                    <li><a href="{{DOCS_URL}}/docs/developer-guides/mcp-integration/overview">MCP Integration</a></li>
+                </ul>
+            </div>
+            <div class="footer-col">
+                <h4>Product</h4>
+                <ul>
+                    <li><a href="{{FRONTEND_URL}}">Dashboard</a></li>
+                    <li><a href="{{FRONTEND_URL}}/pricing">Pricing</a></li>
+                </ul>
+            </div>
+        </div>
+        <div class="footer-copyright">
+            &copy; 2026 ACE
+        </div>
+    </footer>
 </body>
 </html>"""
-        return html.replace("{{FRONTEND_URL}}", frontend_url)
+        return html.replace("{{FRONTEND_URL}}", frontend_url).replace("{{DOCS_URL}}", docs_url)
 
 
 # Create the application instance
