@@ -25,11 +25,11 @@ describe('App routing', () => {
     vi.clearAllMocks();
   });
 
-  it('redirects unsubscribed users from /dashboard to /pricing', async () => {
+  it('allows unsubscribed users to view the dashboard', async () => {
     window.history.pushState({}, '', '/dashboard');
     render(<App />);
 
-    expect(await screen.findByText('Choose Your Plan')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Playbooks' })).toBeInTheDocument();
   });
 });
 
