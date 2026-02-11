@@ -106,14 +106,15 @@ class FlyReplayMiddleware:
             return
 
         path = scope.get("path", "")
+        normalized_path = path.rstrip("/") or "/"
 
         # For SSE endpoint: inject fly_instance into the endpoint event
-        if path.rstrip("/") == "/sse":
+        if normalized_path.endswith("/sse"):
             await self._handle_sse(scope, receive, send)
             return
 
         # For messages endpoint: intercept 404 and replay if needed
-        if "/messages" in path:
+        if normalized_path.endswith("/messages"):
             await self._handle_messages(scope, receive, send)
             return
 
@@ -127,14 +128,15 @@ class FlyReplayMiddleware:
                 body = message.get("body", b"")
                 if isinstance(body, bytes):
                     text = body.decode("utf-8", errors="replace")
-                    # The SSE endpoint event looks like:
-                    # event: endpoint\r\ndata: /mcp/messages/?session_id=abc123\r\n
-                    # Append fly_instance to the URL
-                    if "session_id=" in text:
-                        text = text.replace(
-                            "\r\n",
-                            f"&fly_instance={self.machine_id}\r\n",
-                            1,
+                    # Append fly_instance to the endpoint event URL.
+                    # Endpoint data line looks like:
+                    # data: /mcp/messages/?session_id=abc123
+                    if "session_id=" in text and "fly_instance=" not in text:
+                        text = re.sub(
+                            r"(data:\s*)([^\r\n]*session_id=[^\r\n]*)",
+                            lambda m: f"{m.group(1)}{m.group(2)}&fly_instance={self.machine_id}",
+                            text,
+                            count=1,
                         )
                         message = {**message, "body": text.encode("utf-8")}
             await send(message)

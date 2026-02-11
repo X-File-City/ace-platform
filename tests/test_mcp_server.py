@@ -197,7 +197,7 @@ class TestFlyReplayMiddleware:
             os.environ.pop("FLY_MACHINE_ID", None)
             mw = FlyReplayMiddleware(dummy_app)
 
-        scope = {"type": "http", "path": "/messages/", "query_string": b"session_id=abc"}
+        scope = {"type": "http", "path": "/mcp/messages/", "query_string": b"session_id=abc"}
         asyncio.get_event_loop().run_until_complete(self._collect_response(mw, scope))
         assert dummy_app.called
 
@@ -225,7 +225,7 @@ class TestFlyReplayMiddleware:
 
         scope = {
             "type": "http",
-            "path": "/messages/",
+            "path": "/mcp/messages/",
             "query_string": b"session_id=abc&fly_instance=machine-a",
         }
         asyncio.get_event_loop().run_until_complete(self._collect_response(mw, scope))
@@ -243,7 +243,7 @@ class TestFlyReplayMiddleware:
         scope = {
             "type": "http",
             "method": "POST",
-            "path": "/messages/",
+            "path": "/mcp/messages/",
             "query_string": b"session_id=abc&fly_instance=machine-b",
             "headers": [],
         }
@@ -266,30 +266,31 @@ class TestFlyReplayMiddleware:
 
         scope = {
             "type": "http",
-            "path": "/messages/",
+            "path": "/mcp/messages/",
             "query_string": b"session_id=abc",
         }
         asyncio.get_event_loop().run_until_complete(self._collect_response(mw, scope))
         assert dummy_app.called
 
-    def test_sse_injects_fly_instance(self, dummy_app):
-        """SSE endpoint response has fly_instance appended to session URL."""
+    def test_sse_injects_fly_instance_on_endpoint_data_line(self, dummy_app):
+        """SSE endpoint response has fly_instance appended to endpoint data URL."""
         import asyncio
 
         from ace_platform.mcp.server import FlyReplayMiddleware
 
         # Make the dummy app return an SSE-like body
-        dummy_app.body = b"data: /mcp/messages/?session_id=abc123\r\n\r\n"
+        dummy_app.body = b"event: endpoint\r\ndata: /mcp/messages/?session_id=abc123\r\n\r\n"
 
         with patch.dict(os.environ, {"FLY_MACHINE_ID": "machine-a"}):
             mw = FlyReplayMiddleware(dummy_app)
 
-        scope = {"type": "http", "path": "/sse", "query_string": b""}
+        scope = {"type": "http", "path": "/mcp/sse", "query_string": b""}
         parts = asyncio.get_event_loop().run_until_complete(self._collect_response(mw, scope))
         body_part = next(p for p in parts if p.get("type") == "http.response.body")
         body_text = body_part["body"].decode("utf-8")
-        assert "fly_instance=machine-a" in body_text
-        assert "session_id=abc123" in body_text
+        assert "event: endpoint\r\n" in body_text
+        assert "event: endpoint&fly_instance=machine-a" not in body_text
+        assert "data: /mcp/messages/?session_id=abc123&fly_instance=machine-a\r\n" in body_text
 
 
 # Integration tests require PostgreSQL
