@@ -275,7 +275,7 @@ class Settings(BaseSettings):
         description="HSTS max-age in seconds (default: 1 year)",
     )
     security_csp: str = Field(
-        default="default-src 'self'; frame-ancestors 'none'",
+        default="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; frame-ancestors 'none'",
         description="Content-Security-Policy header value",
     )
 
