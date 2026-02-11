@@ -178,6 +178,10 @@ class Settings(BaseSettings):
         default="http://localhost:3000",
         description="Frontend application URL for post-OAuth redirects",
     )
+    docs_url: str = Field(
+        default="https://docs.aceagent.io",
+        description="Documentation site URL for landing page links",
+    )
     session_secret_key: str = Field(
         default="",
         description="Secret key for OAuth session cookies (separate from JWT for security isolation)",
