@@ -212,8 +212,6 @@ Any MCP client that supports SSE transport can connect to ACE:
 }
 ```
 
-[Custom agent guide →](/docs/developer-guides/mcp-integration/custom-agents)
-
 ## Configuring Agent Instructions
 
 After connecting the MCP server, you need to tell your agent *when* and *how* to use your playbooks. Add instructions to your agent's custom instructions file (e.g., `CLAUDE.md`, `AGENTS.md`, system prompt, or equivalent).
@@ -363,4 +361,3 @@ Common error codes:
 
 - [Set up Claude Desktop](/docs/developer-guides/mcp-integration/claude-desktop)
 - [Set up Claude Code](/docs/developer-guides/mcp-integration/claude-code)
-- [Build custom agents](/docs/developer-guides/mcp-integration/custom-agents)

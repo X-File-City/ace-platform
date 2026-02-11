@@ -33,7 +33,6 @@ const sidebars: SidebarsConfig = {
             'developer-guides/mcp-integration/overview',
             'developer-guides/mcp-integration/claude-desktop',
             'developer-guides/mcp-integration/claude-code',
-            'developer-guides/mcp-integration/custom-agents',
           ],
         },
         'developer-guides/authentication',

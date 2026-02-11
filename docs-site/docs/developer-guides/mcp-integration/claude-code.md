@@ -181,6 +181,5 @@ export ACE_API_KEY="ace_..."
 
 ## Next Steps
 
-- [Build custom MCP agents](/docs/developer-guides/mcp-integration/custom-agents)
 - [Recording effective outcomes](/docs/developer-guides/recording-outcomes)
 - [Managing API keys](/docs/user-guides/managing-api-keys)
