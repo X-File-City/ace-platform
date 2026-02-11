@@ -5,6 +5,7 @@ import { playbooksApi } from '../../utils/api';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { ArrowLeft, Save, AlertCircle } from 'lucide-react';
+import { SubscriptionGate } from '../../components/SubscriptionGate';
 import type { VersionCreate } from '../../types';
 import styles from './PlaybookContentEditor.module.css';
 
@@ -121,14 +122,16 @@ export function PlaybookContentEditor() {
           >
             Cancel
           </Button>
-          <Button
-            icon={<Save size={16} />}
-            onClick={handleSave}
-            isLoading={saveMutation.isPending}
-            disabled={!content.trim() || !hasUnsavedChanges}
-          >
-            Save Version
-          </Button>
+          <SubscriptionGate featureName="playbook content editing">
+            <Button
+              icon={<Save size={16} />}
+              onClick={handleSave}
+              isLoading={saveMutation.isPending}
+              disabled={!content.trim() || !hasUnsavedChanges}
+            >
+              Save Version
+            </Button>
+          </SubscriptionGate>
         </div>
       </div>
 

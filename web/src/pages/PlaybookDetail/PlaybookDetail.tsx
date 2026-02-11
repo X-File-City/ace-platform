@@ -20,6 +20,7 @@ import {
   ChevronRight,
   Sparkles,
 } from 'lucide-react';
+import { SubscriptionGate } from '../../components/SubscriptionGate';
 import type { Playbook, PlaybookVersion, PlaybookUpdate, Outcome, EvolutionJob } from '../../types';
 import styles from './PlaybookDetail.module.css';
 
@@ -124,20 +125,24 @@ export function PlaybookDetail() {
         </div>
 
         <div className={styles.headerActions}>
-          <Button
-            variant="secondary"
-            icon={<Edit2 size={16} />}
-            onClick={() => setShowEditModal(true)}
-          >
-            Edit
-          </Button>
-          <Button
-            variant="danger"
-            icon={<Trash2 size={16} />}
-            onClick={() => setShowDeleteConfirm(true)}
-          >
-            Delete
-          </Button>
+          <SubscriptionGate featureName="playbook editing">
+            <Button
+              variant="secondary"
+              icon={<Edit2 size={16} />}
+              onClick={() => setShowEditModal(true)}
+            >
+              Edit
+            </Button>
+          </SubscriptionGate>
+          <SubscriptionGate featureName="playbook management">
+            <Button
+              variant="danger"
+              icon={<Trash2 size={16} />}
+              onClick={() => setShowDeleteConfirm(true)}
+            >
+              Delete
+            </Button>
+          </SubscriptionGate>
         </div>
       </div>
 
@@ -244,9 +249,11 @@ function ContentTab({
     return (
       <div className={styles.emptyContent}>
         <p>No content yet.</p>
-        <Link to={`/playbooks/${playbookId}/edit`}>
-          <Button icon={<Edit2 size={16} />}>Add Content</Button>
-        </Link>
+        <SubscriptionGate featureName="playbook content editing">
+          <Link to={`/playbooks/${playbookId}/edit`}>
+            <Button icon={<Edit2 size={16} />}>Add Content</Button>
+          </Link>
+        </SubscriptionGate>
       </div>
     );
   }
@@ -260,11 +267,13 @@ function ContentTab({
         <span className={styles.bulletCount}>
           {playbook.current_version.bullet_count} bullets
         </span>
-        <Link to={`/playbooks/${playbookId}/edit`} className={styles.editContentLink}>
-          <Button variant="secondary" size="sm" icon={<Edit2 size={14} />}>
-            Edit Content
-          </Button>
-        </Link>
+        <SubscriptionGate featureName="playbook content editing">
+          <Link to={`/playbooks/${playbookId}/edit`} className={styles.editContentLink}>
+            <Button variant="secondary" size="sm" icon={<Edit2 size={14} />}>
+              Edit Content
+            </Button>
+          </Link>
+        </SubscriptionGate>
       </div>
       <div className={styles.markdownContent}>
         <PlaybookRenderer content={playbook.current_version.content} />
@@ -433,13 +442,15 @@ function EvolutionsTab({ playbookId, isAuthLoading, isAuthenticated }: { playboo
       <div className={styles.emptyContent}>
         <p>No evolutions yet.</p>
         {triggerError && <p className={styles.evolutionError}>{triggerError}</p>}
-        <Button
-          icon={<Sparkles size={16} />}
-          onClick={() => triggerMutation.mutate()}
-          isLoading={triggerMutation.isPending}
-        >
-          Trigger Evolution
-        </Button>
+        <SubscriptionGate featureName="playbook evolution">
+          <Button
+            icon={<Sparkles size={16} />}
+            onClick={() => triggerMutation.mutate()}
+            isLoading={triggerMutation.isPending}
+          >
+            Trigger Evolution
+          </Button>
+        </SubscriptionGate>
       </div>
     );
   }
@@ -454,13 +465,15 @@ function EvolutionsTab({ playbookId, isAuthLoading, isAuthenticated }: { playboo
   return (
     <div className={styles.evolutionsList}>
       <div className={styles.evolutionsActions}>
-        <Button
-          icon={<Sparkles size={16} />}
-          onClick={() => triggerMutation.mutate()}
-          isLoading={triggerMutation.isPending}
-        >
-          Trigger Evolution
-        </Button>
+        <SubscriptionGate featureName="playbook evolution">
+          <Button
+            icon={<Sparkles size={16} />}
+            onClick={() => triggerMutation.mutate()}
+            isLoading={triggerMutation.isPending}
+          >
+            Trigger Evolution
+          </Button>
+        </SubscriptionGate>
         {triggerError && <span className={styles.evolutionError}>{triggerError}</span>}
       </div>
       {data.items.map((job: EvolutionJob) => (
