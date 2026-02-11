@@ -408,12 +408,13 @@ def _register_routes(app: FastAPI) -> None:
     #     }
     #   }
     # }
-    from ace_platform.mcp.server import HeaderAuthMiddleware
+    from ace_platform.mcp.server import FlyReplayMiddleware, HeaderAuthMiddleware
     from ace_platform.mcp.server import mcp as mcp_server
 
     mcp_sse_app = mcp_server.sse_app()
     mcp_sse_app_with_auth = HeaderAuthMiddleware(mcp_sse_app)
-    app.mount("/mcp", app=mcp_sse_app_with_auth, name="mcp")
+    mcp_sse_app_with_replay = FlyReplayMiddleware(mcp_sse_app_with_auth)
+    app.mount("/mcp", app=mcp_sse_app_with_replay, name="mcp")
 
     # OAuth discovery endpoints - return OAuth-spec-compatible 404 responses.
     # Claude Code's MCP client performs OAuth discovery (RFC 9728) before
