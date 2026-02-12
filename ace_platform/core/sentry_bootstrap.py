@@ -225,6 +225,28 @@ def get_effective_profiles_sample_rate(
     )
 
 
+try:
+    from anyio import BrokenResourceError, ClosedResourceError
+except ImportError:  # pragma: no cover - anyio is an app dependency
+    _SSE_DISCONNECT_EXCEPTION_TYPES: tuple[type[BaseException], ...] = ()
+else:
+    _SSE_DISCONNECT_EXCEPTION_TYPES = (ClosedResourceError, BrokenResourceError)
+
+
+def _before_send_filter(event: dict[str, Any], hint: dict[str, Any]) -> dict[str, Any] | None:
+    """Drop Sentry events caused by expected SSE client disconnects.
+
+    When an SSE client disconnects, anyio raises ClosedResourceError or
+    BrokenResourceError. These are normal lifecycle events, not bugs.
+    """
+    exc_info = hint.get("exc_info")
+    if exc_info is not None and _SSE_DISCONNECT_EXCEPTION_TYPES:
+        exc_value = exc_info[1]
+        if isinstance(exc_value, _SSE_DISCONNECT_EXCEPTION_TYPES):
+            return None
+    return event
+
+
 def init_sentry_for_process(
     *,
     process_name: str,
@@ -287,6 +309,8 @@ def init_sentry_for_process(
         transport=_FastFailTransport,
         # Don't stall process shutdown waiting for the transport queue to drain.
         shutdown_timeout=2,
+        # Filter out expected SSE disconnect errors (ClosedResourceError, etc.)
+        before_send=_before_send_filter,
     )
 
     logger.info(
