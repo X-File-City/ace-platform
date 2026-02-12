@@ -48,6 +48,7 @@ from ace_platform.core.playbook_matching import (
     score_playbook_match,
 )
 from ace_platform.core.rate_limit import RATE_LIMITS, RateLimiter, get_rate_limiter
+from ace_platform.core.sentry_bootstrap import init_sentry_for_process
 from ace_platform.core.validation import (
     MAX_PLAYBOOK_DESCRIPTION_SIZE,
     MAX_PLAYBOOK_NAME_SIZE,
@@ -1430,6 +1431,11 @@ def run_server(transport: str = "stdio") -> None:
                    Use 'stdio' for local development with Claude Desktop.
                    Use 'sse' for web-based clients.
     """
+    # Initialize Sentry for standalone MCP process.
+    # When MCP is mounted inside the API (via _register_routes), the API
+    # handles its own Sentry init, so this only runs for standalone mode.
+    init_sentry_for_process(process_name="mcp", settings=settings)
+
     # Host and port are configured at FastMCP initialization
     mcp.run(transport=transport)
 
