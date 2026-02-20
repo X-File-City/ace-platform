@@ -23,6 +23,15 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
+def normalize_database_url(database_url: str) -> str:
+    """Normalize DB URLs for SQLAlchemy async engine."""
+    if database_url.startswith("postgresql://"):
+        return database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    if database_url.startswith("postgres://"):
+        return database_url.replace("postgres://", "postgresql+asyncpg://", 1)
+    return database_url
+
+
 async def promote_user(email: str) -> None:
     from sqlalchemy import select, update
     from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
