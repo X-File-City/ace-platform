@@ -329,6 +329,26 @@ class TestAppConfiguration:
         assert "/health" in routes
         assert "/ready" in routes
 
+    def test_mcp_streamable_and_legacy_endpoints_are_mounted(self):
+        """Mounted MCP endpoints should exist for both HTTP and legacy SSE."""
+        with TestClient(app) as client:
+            response = client.get("/mcp")
+            assert response.status_code != 404
+
+            # Probe legacy SSE mount without opening a streaming SSE connection.
+            response = client.options("/mcp/sse")
+            assert response.status_code != 404
+
+    def test_app_lifespan_can_restart_after_streamable_http_session_shutdown(self):
+        """Repeated app startups should not fail on one-shot session manager reuse."""
+        with TestClient(app) as first_client:
+            first_response = first_client.get("/health")
+            assert first_response.status_code == 200
+
+        with TestClient(app) as second_client:
+            second_response = second_client.get("/health")
+            assert second_response.status_code == 200
+
 
 class TestRequestProcessing:
     """Tests for request processing features."""
