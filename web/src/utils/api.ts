@@ -9,7 +9,6 @@ import type {
   ApiKeyCreateResponse,
   AttributionSnapshot,
   AuditLogItem,
-  FunnelFilters,
   DailyEvolution,
   DailySignup,
   DailyUsage,
