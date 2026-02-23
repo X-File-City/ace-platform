@@ -285,8 +285,16 @@ class TestAuthRoutesIntegration:
     def app(self):
         """Create a test FastAPI app with auth routes."""
         from ace_platform.api.main import create_app
+        from ace_platform.core.rate_limit import rate_limit_login, rate_limit_register
 
-        return create_app()
+        async def _no_rate_limit():
+            """Disable rate limits for schema/validation integration tests."""
+            pass
+
+        app = create_app()
+        app.dependency_overrides[rate_limit_register] = _no_rate_limit
+        app.dependency_overrides[rate_limit_login] = _no_rate_limit
+        return app
 
     @pytest.fixture
     def client(self, app):
@@ -321,6 +329,27 @@ class TestAuthRoutesIntegration:
             json={"email": "test@example.com", "password": "short"},
         )
         assert response.status_code == 422
+
+    def test_register_request_schema_accepts_attribution_fields(self):
+        """Test register request schema supports optional attribution metadata."""
+        from ace_platform.api.routes.auth import UserRegisterRequest
+
+        payload = UserRegisterRequest(
+            email="test@example.com",
+            password="password123",
+            anonymous_id="anon_abc123",
+            attribution={
+                "src": "twitter",
+                "utm_campaign": "launch",
+                "landing_path": "/x",
+            },
+            experiment_variant="late_disclosure",
+        )
+
+        assert payload.anonymous_id == "anon_abc123"
+        assert payload.attribution is not None
+        assert payload.attribution["src"] == "twitter"
+        assert payload.experiment_variant == "late_disclosure"
 
     def test_login_missing_fields(self, client):
         """Test login with missing fields."""
