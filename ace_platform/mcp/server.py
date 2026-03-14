@@ -492,6 +492,11 @@ class RequestDBSessionMiddleware:
     tool calls can pin connections and exhaust the SQLAlchemy pool under load.
     This middleware gives each mounted HTTP request its own session while
     keeping the lifespan session as a fallback for non-HTTP transports.
+
+    MCP tools often return business errors as normal string results instead of
+    raising exceptions, so only explicit commits inside tool handlers should
+    persist changes. Any leftover transaction state is rolled back here before
+    the request-scoped session is closed.
     """
 
     def __init__(self, app: ASGIApp) -> None:
@@ -506,7 +511,7 @@ class RequestDBSessionMiddleware:
             token = _request_db_session.set(db)
             try:
                 await self.app(scope, receive, send)
-                await db.commit()
+                await db.rollback()
             except Exception:
                 await db.rollback()
                 raise

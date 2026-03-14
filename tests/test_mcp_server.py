@@ -1218,8 +1218,8 @@ class TestRequestDBSessionMiddleware:
 
         assert seen["db"] is request_db
         assert seen["request_db_var"] is request_db
-        request_db.commit.assert_awaited_once()
-        request_db.rollback.assert_not_awaited()
+        request_db.commit.assert_not_awaited()
+        request_db.rollback.assert_awaited_once()
         assert mcp_server._request_db_session.get() is None
 
     @pytest.mark.asyncio
