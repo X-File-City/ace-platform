@@ -1166,6 +1166,97 @@ class TestHeaderAuthMiddleware:
         assert call_count == 1
 
 
+class _AsyncSessionContextManager:
+    def __init__(self, session):
+        self.session = session
+
+    async def __aenter__(self):
+        return self.session
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        return False
+
+
+class TestRequestDBSessionMiddleware:
+    """Tests for request-scoped MCP database sessions."""
+
+    @pytest.mark.asyncio
+    async def test_request_db_session_takes_priority_over_lifespan_session(self, monkeypatch):
+        """Mounted HTTP requests should use a fresh request-scoped DB session."""
+        from ace_platform.mcp import server as mcp_server
+
+        request_db = AsyncMock()
+        request_db.commit = AsyncMock()
+        request_db.rollback = AsyncMock()
+        lifespan_db = AsyncMock()
+        seen = {}
+
+        async def app(scope, receive, send):
+            ctx = MagicMock()
+            ctx.request_context.lifespan_context.db = lifespan_db
+            seen["db"] = mcp_server.get_db(ctx)
+            seen["request_db_var"] = mcp_server._request_db_session.get()
+            await send({"type": "http.response.start", "status": 200, "headers": []})
+            await send({"type": "http.response.body", "body": b"OK"})
+
+        monkeypatch.setattr(
+            mcp_server,
+            "AsyncSessionLocal",
+            lambda: _AsyncSessionContextManager(request_db),
+        )
+
+        middleware = mcp_server.RequestDBSessionMiddleware(app)
+        scope = {"type": "http", "headers": []}
+
+        async def receive():
+            return {"type": "http.request", "body": b""}
+
+        async def send(message):
+            return None
+
+        await middleware(scope, receive, send)
+
+        assert seen["db"] is request_db
+        assert seen["request_db_var"] is request_db
+        request_db.commit.assert_not_awaited()
+        request_db.rollback.assert_awaited_once()
+        assert mcp_server._request_db_session.get() is None
+
+    @pytest.mark.asyncio
+    async def test_request_db_session_rolls_back_on_exception(self, monkeypatch):
+        """Request-scoped DB sessions should rollback when the request fails."""
+        from ace_platform.mcp import server as mcp_server
+
+        request_db = AsyncMock()
+        request_db.commit = AsyncMock()
+        request_db.rollback = AsyncMock()
+
+        async def app(scope, receive, send):
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(
+            mcp_server,
+            "AsyncSessionLocal",
+            lambda: _AsyncSessionContextManager(request_db),
+        )
+
+        middleware = mcp_server.RequestDBSessionMiddleware(app)
+        scope = {"type": "http", "headers": []}
+
+        async def receive():
+            return {"type": "http.request", "body": b""}
+
+        async def send(message):
+            return None
+
+        with pytest.raises(RuntimeError, match="boom"):
+            await middleware(scope, receive, send)
+
+        request_db.commit.assert_not_awaited()
+        request_db.rollback.assert_awaited_once()
+        assert mcp_server._request_db_session.get() is None
+
+
 class TestGetApiKeyWithHeaders:
     """Tests for get_api_key integration with HeaderAuthMiddleware."""
 

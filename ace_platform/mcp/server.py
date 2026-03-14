@@ -86,6 +86,10 @@ SESSION_ROUTING_SEPARATOR = "@"
 # Context variable for storing API key extracted from HTTP headers
 # This allows tools to access the API key without it being passed as a parameter
 _request_api_key: ContextVar[str | None] = ContextVar("request_api_key", default=None)
+_request_db_session: ContextVar[AsyncSession | None] = ContextVar(
+    "request_db_session",
+    default=None,
+)
 
 
 class SSEDisconnectMiddleware:
@@ -480,6 +484,41 @@ class HeaderAuthMiddleware:
             await self.app(scope, receive, send)
 
 
+class RequestDBSessionMiddleware:
+    """ASGI middleware that provides a request-scoped async DB session.
+
+    FastMCP lifespan contexts live for the lifetime of a stateful MCP session,
+    not for a single HTTP request. Reusing one AsyncSession across many MCP
+    tool calls can pin connections and exhaust the SQLAlchemy pool under load.
+    This middleware gives each mounted HTTP request its own session while
+    keeping the lifespan session as a fallback for non-HTTP transports.
+
+    MCP tools often return business errors as normal string results instead of
+    raising exceptions, so only explicit commits inside tool handlers should
+    persist changes. Any leftover transaction state is rolled back here before
+    the request-scoped session is closed.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async with AsyncSessionLocal() as db:
+            token = _request_db_session.set(db)
+            try:
+                await self.app(scope, receive, send)
+                await db.rollback()
+            except Exception:
+                await db.rollback()
+                raise
+            finally:
+                _request_db_session.reset(token)
+
+
 @dataclass
 class MCPContext:
     """Application context available during MCP requests."""
@@ -576,7 +615,8 @@ def create_mcp_asgi_app(*, include_legacy_sse: bool = True) -> ASGIApp:
     streamable_app = StreamableSessionAffinityMiddleware(streamable_app)
 
     if not include_legacy_sse:
-        return HeaderAuthMiddleware(streamable_app)
+        app = HeaderAuthMiddleware(streamable_app)
+        return RequestDBSessionMiddleware(app)
 
     legacy_sse_app = mcp.sse_app()
     legacy_sse_app = SSEDisconnectMiddleware(legacy_sse_app)
@@ -587,6 +627,7 @@ def create_mcp_asgi_app(*, include_legacy_sse: bool = True) -> ASGIApp:
         legacy_sse_app=legacy_sse_app,
     )
     app = HeaderAuthMiddleware(app)
+    app = RequestDBSessionMiddleware(app)
     app = LegacySSEDeprecationMiddleware(app)
     return app
 
@@ -616,7 +657,14 @@ async def ready_check(request: Request) -> Response:
 
 # Helper to get database session from context
 def get_db(ctx: Context) -> AsyncSession:
-    """Get database session from MCP context."""
+    """Get the current MCP database session.
+
+    Mounted HTTP requests use a request-scoped session from middleware.
+    Stdio / non-HTTP transports fall back to the lifespan session.
+    """
+    request_db = _request_db_session.get()
+    if request_db is not None:
+        return request_db
     return ctx.request_context.lifespan_context.db
 
 
