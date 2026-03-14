@@ -6,20 +6,22 @@ This module sets up the FastAPI application with:
 - Request timing middleware for performance monitoring
 - Global error handling
 - Health check endpoints
-- MCP server integration (SSE transport)
+- MCP server integration (Streamable HTTP + legacy SSE compatibility)
 - Sentry error tracking (when configured)
 """
 
 import logging
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 
 import sentry_sdk
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ace_platform.config import get_settings
 from ace_platform.core.logging import get_logger, setup_logging
@@ -40,6 +42,8 @@ from .middleware import (
 settings = get_settings()
 logger = get_logger(__name__)
 LANDING_VIDEO_PATH = Path(__file__).resolve().parent.parent / "static" / "landing-hero-video.mp4"
+LANDING_FAVICON_PATH = Path(__file__).resolve().parent.parent / "static" / "ace-favicon.svg"
+LANDING_SOCIAL_CARD_PATH = Path(__file__).resolve().parent.parent / "static" / "ace-social-card.png"
 
 
 def _init_sentry() -> None:
@@ -111,11 +115,15 @@ async def lifespan(app: FastAPI):
 
     # Setup OAuth clients
     from ace_platform.core.oauth import setup_oauth
+    from ace_platform.mcp.server import streamable_http_session_lifespan
 
     setup_oauth()
     logger.info("OAuth clients configured")
 
-    yield
+    # Mounted MCP Streamable HTTP transport needs the session manager to run in
+    # the parent app lifespan because mounted sub-app lifespans are not executed.
+    async with streamable_http_session_lifespan():
+        yield
 
     # Shutdown
     logger.info("ACE Platform API shutting down")
@@ -142,6 +150,34 @@ async def _seed_starter_playbooks() -> None:
     except Exception as e:
         # Don't fail startup if seeding fails
         logger.error(f"Error seeding starter playbooks: {e}")
+
+
+class MountedRootPathAdapter:
+    """Dispatch an exact mount root path to a mounted ASGI app without redirecting.
+
+    FastAPI mounts redirect `/mcp` -> `/mcp/` by default. This adapter forwards
+    exact `/mcp` requests directly to the mounted app with a scope that matches
+    mounted semantics (`path=/`, `root_path=/mcp`), avoiding redirect-based
+    method changes through upstream proxies.
+    """
+
+    def __init__(self, app: ASGIApp, mount_path: str) -> None:
+        self.app = app
+        self.mount_path = mount_path.rstrip("/") or "/"
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        existing_root = str(scope.get("root_path", "")) or ""
+        normalized_root = f"{existing_root.rstrip('/')}{self.mount_path}"
+        forwarded_scope: Scope = {
+            **scope,
+            "root_path": normalized_root,
+            "path": "/",
+        }
+        await self.app(forwarded_scope, receive, send)
 
 
 def create_app() -> FastAPI:
@@ -360,6 +396,7 @@ def _register_routes(app: FastAPI) -> None:
     from ace_platform.api.routes import (
         account_router,
         admin_router,
+        analytics_router,
         auth_router,
         billing_router,
         evolutions_router,
@@ -371,6 +408,7 @@ def _register_routes(app: FastAPI) -> None:
 
     # Include API routers
     app.include_router(auth_router)
+    app.include_router(analytics_router)
     app.include_router(account_router)
     app.include_router(admin_router)
     app.include_router(oauth_router)
@@ -380,9 +418,11 @@ def _register_routes(app: FastAPI) -> None:
     app.include_router(evolutions_router)
     app.include_router(support_router)
 
-    # Mount MCP server at /mcp for SSE transport
+    # Mount MCP server at /mcp with Streamable HTTP as default transport.
+    # Legacy SSE endpoints remain available at /mcp/sse and /mcp/messages
+    # during the compatibility window.
     # This allows clients to connect to the MCP server via the same domain as the API
-    # using: https://aceagent.io/mcp/sse
+    # using: https://aceagent.io/mcp
     #
     # The HeaderAuthMiddleware wraps the MCP app to extract API keys from HTTP headers:
     # - X-API-Key: <api_key>
@@ -392,28 +432,30 @@ def _register_routes(app: FastAPI) -> None:
     # {
     #   "mcpServers": {
     #     "ace": {
-    #       "type": "sse",
-    #       "url": "https://aceagent.io/mcp/sse",
+    #       "type": "http",
+    #       "url": "https://aceagent.io/mcp",
     #       "headers": { "X-API-Key": "your-api-key" }
     #     }
     #   }
     # }
-    from ace_platform.mcp.server import (
-        FlyReplayMiddleware,
-        HeaderAuthMiddleware,
-        SSEDisconnectMiddleware,
-    )
-    from ace_platform.mcp.server import mcp as mcp_server
+    from ace_platform.mcp.server import create_mcp_asgi_app
 
-    mcp_sse_app = mcp_server.sse_app()
-    mcp_sse_app_with_auth = HeaderAuthMiddleware(mcp_sse_app)
-    mcp_sse_app_with_disconnect = SSEDisconnectMiddleware(mcp_sse_app_with_auth)
-    mcp_sse_app_with_replay = FlyReplayMiddleware(mcp_sse_app_with_disconnect)
-    app.mount("/mcp", app=mcp_sse_app_with_replay, name="mcp")
+    mcp_app = create_mcp_asgi_app(include_legacy_sse=True)
+
+    # Handle exact `/mcp` requests without redirecting to `/mcp/`.
+    # This prevents proxies from turning redirected POSTs into GETs and breaking
+    # Streamable HTTP initialization.
+    app.add_route(
+        "/mcp",
+        MountedRootPathAdapter(mcp_app, mount_path="/mcp"),
+        methods=["GET", "POST", "DELETE", "HEAD", "OPTIONS"],
+        include_in_schema=False,
+    )
+    app.mount("/mcp", app=mcp_app, name="mcp")
 
     # OAuth discovery endpoints - return OAuth-spec-compatible 404 responses.
     # Claude Code's MCP client performs OAuth discovery (RFC 9728) before
-    # connecting to SSE endpoints. FastAPI's default 404 body {"detail":"Not Found"}
+    # connecting to remote MCP endpoints. FastAPI's default 404 body {"detail":"Not Found"}
     # doesn't match the expected OAuth error format {"error":"..."}, causing a
     # ZodError in the client. These endpoints return spec-compliant 404s.
     @app.get("/.well-known/oauth-protected-resource")
@@ -510,39 +552,408 @@ def _register_routes(app: FastAPI) -> None:
             filename="landing-hero-video.mp4",
         )
 
-    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
-    async def landing_page():
-        """Serve the landing page."""
+    @app.get("/ace-favicon.svg", include_in_schema=False)
+    async def landing_favicon():
+        """Serve landing page favicon from same origin."""
+        if not LANDING_FAVICON_PATH.exists():
+            raise HTTPException(status_code=404, detail="Landing favicon not found")
+        return FileResponse(
+            LANDING_FAVICON_PATH,
+            media_type="image/svg+xml",
+            filename="ace-favicon.svg",
+        )
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def favicon_ico():
+        """Redirect browser default favicon requests to the SVG favicon."""
+        return RedirectResponse(url="/ace-favicon.svg", status_code=307)
+
+    @app.get("/ace-social-card.png", include_in_schema=False)
+    async def landing_social_card():
+        """Serve social preview image for Open Graph/Twitter cards."""
+        if not LANDING_SOCIAL_CARD_PATH.exists():
+            raise HTTPException(status_code=404, detail="Social card not found")
+        return FileResponse(
+            LANDING_SOCIAL_CARD_PATH,
+            media_type="image/png",
+            filename="ace-social-card.png",
+        )
+
+    @app.get("/x", response_class=HTMLResponse, include_in_schema=False)
+    async def x_landing_page(request: Request):
+        """Serve an X-optimized mobile-first acquisition landing page."""
+        if not settings.x_landing_enabled:
+            return RedirectResponse(url="/", status_code=307)
+
         frontend_url = settings.frontend_url.rstrip("/")
         docs_url = settings.docs_url.rstrip("/")
+        site_url = settings.oauth_redirect_base_url.rstrip("/")
+        x_url = f"{site_url}/x"
+        social_image_url = f"{site_url}/ace-social-card.png"
+        current_year = datetime.now(UTC).year
         html = """<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ACE - Playbooks as a Service</title>
-    <meta name="description" content="Self-improving AI instructions. Record outcomes, and ACE automatically evolves your playbooks based on real-world results.">
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800&family=Cormorant+Garamond:wght@300;400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/svg+xml" href="/ace-favicon.svg">
+    <link rel="shortcut icon" href="/favicon.ico">
+    <title>ACE | X Quick Start</title>
+    <meta name="description" content="Start your ACE free trial in under 2 minutes. Built for mobile visitors discovering ACE from X.">
+    <meta property="og:title" content="ACE: Improve AI output after every task">
+    <meta property="og:description" content="Start your free trial. ACE turns real outcomes into evolving playbooks for better AI results.">
+    <meta property="og:image" content="{{SOCIAL_IMAGE_URL}}">
+    <meta property="og:url" content="{{OG_URL}}">
+    <meta property="og:site_name" content="ACE">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="ACE: Improve AI output after every task">
+    <meta name="twitter:description" content="Start your free trial. ACE turns real outcomes into evolving playbooks for better AI results.">
+    <meta name="twitter:image" content="{{SOCIAL_IMAGE_URL}}">
+    <style>
+        :root {
+            --bg: #fbf9f4;
+            --surface: #ffffff;
+            --ink: #121212;
+            --muted: #585858;
+            --line: rgba(0, 0, 0, 0.1);
+            --accent: #bf1d3a;
+            --accent-deep: #94142c;
+            --gold: #b8860b;
+            --radius: 14px;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: "Baskerville", "Garamond", Georgia, serif;
+            color: var(--ink);
+            background: radial-gradient(circle at 8% 5%, rgba(184, 134, 11, 0.12), transparent 40%),
+                        radial-gradient(circle at 85% 95%, rgba(191, 29, 58, 0.12), transparent 42%),
+                        var(--bg);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+        .page {
+            max-width: 760px;
+            margin: 0 auto;
+            padding: 1rem 1rem 6.5rem;
+        }
+        .nav {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            margin-bottom: 1.4rem;
+        }
+        .brand {
+            font-family: "Palatino Linotype", Palatino, serif;
+            font-weight: 700;
+            text-decoration: none;
+            color: var(--ink);
+            letter-spacing: 0.02em;
+            font-size: 1.05rem;
+        }
+        .nav-links {
+            display: flex;
+            gap: 0.45rem;
+        }
+        .nav-link {
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            padding: 0.35rem 0.72rem;
+            font-size: 0.8rem;
+            color: var(--ink);
+            text-decoration: none;
+            background: var(--surface);
+        }
+        .hero {
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid rgba(184, 134, 11, 0.35);
+            border-radius: var(--radius);
+            padding: 1.2rem;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+        }
+        .eyebrow {
+            display: inline-flex;
+            margin-bottom: 0.7rem;
+            padding: 0.2rem 0.55rem;
+            font-size: 0.75rem;
+            border-radius: 999px;
+            background: rgba(184, 134, 11, 0.1);
+            color: #6d5310;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+        h1 {
+            font-family: "Palatino Linotype", Palatino, serif;
+            font-size: clamp(1.9rem, 7vw, 2.6rem);
+            line-height: 1.1;
+            margin-bottom: 0.7rem;
+        }
+        .hero p { color: var(--muted); font-size: 1.05rem; }
+        .proof {
+            margin-top: 1rem;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+        .badge {
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            padding: 0.25rem 0.55rem;
+            font-size: 0.78rem;
+            background: var(--surface);
+        }
+        .steps {
+            margin-top: 1rem;
+            display: grid;
+            gap: 0.6rem;
+        }
+        .step {
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            padding: 0.75rem;
+            background: var(--surface);
+        }
+        .step strong {
+            font-family: "Palatino Linotype", Palatino, serif;
+            display: block;
+            margin-bottom: 0.15rem;
+            font-size: 1rem;
+        }
+        .step span { color: var(--muted); font-size: 0.95rem; }
+        .sticky-cta {
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 20;
+            border-top: 1px solid var(--line);
+            background: rgba(251, 249, 244, 0.98);
+            backdrop-filter: blur(6px);
+            padding: 0.65rem 0.85rem calc(0.65rem + env(safe-area-inset-bottom, 0px));
+        }
+        .sticky-shell {
+            max-width: 760px;
+            margin: 0 auto;
+            display: grid;
+            gap: 0.35rem;
+        }
+        .cta {
+            display: inline-flex;
+            justify-content: center;
+            width: 100%;
+            border-radius: 10px;
+            padding: 0.82rem 1rem;
+            text-decoration: none;
+            font-family: "Palatino Linotype", Palatino, serif;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+            font-size: 0.82rem;
+            color: #fff;
+            border: 1px solid transparent;
+            background: linear-gradient(145deg, var(--accent), var(--accent-deep));
+        }
+        .micro {
+            text-align: center;
+            font-size: 0.74rem;
+            color: var(--muted);
+        }
+        .footer {
+            margin-top: 1.5rem;
+            font-size: 0.82rem;
+            color: var(--muted);
+            display: flex;
+            justify-content: space-between;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+        .footer a { color: var(--accent); text-decoration: none; }
+        @media (min-width: 901px) {
+            .page { padding-top: 1.4rem; }
+            .sticky-cta { padding-bottom: 0.65rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <header class="nav">
+            <a href="/" class="brand">ACE</a>
+            <nav class="nav-links" aria-label="X landing links">
+                <a class="nav-link" data-preserve-attribution href="{{FRONTEND_URL}}/login">Sign in</a>
+                <a class="nav-link" href="{{DOCS_URL}}/docs/getting-started/quick-start" target="_blank" rel="noreferrer">Docs</a>
+            </nav>
+        </header>
+
+        <main>
+            <section class="hero">
+                <p class="eyebrow">From X to first value</p>
+                <h1>Your AI workflow should improve after every task.</h1>
+                <p>ACE captures what worked and failed, then evolves your playbooks so outcomes get better over time.</p>
+                <div class="proof" aria-label="social proof">
+                    <span class="badge">Built for Claude Code</span>
+                    <span class="badge">Works with Codex</span>
+                    <span class="badge">MCP-native</span>
+                </div>
+                <div class="steps" aria-label="How ACE works">
+                    <article class="step">
+                        <strong>1. Connect in minutes</strong>
+                        <span>Drop ACE into your existing MCP workflow.</span>
+                    </article>
+                    <article class="step">
+                        <strong>2. Run normal work</strong>
+                        <span>Keep coding, shipping, and recording outcomes.</span>
+                    </article>
+                    <article class="step">
+                        <strong>3. Get smarter playbooks</strong>
+                        <span>ACE proposes evolved versions from your real results.</span>
+                    </article>
+                </div>
+            </section>
+        </main>
+
+        <footer class="footer">
+            <span>&copy; {{CURRENT_YEAR}} ACE</span>
+            <div>
+                <a data-preserve-attribution href="{{FRONTEND_URL}}/terms">Terms</a>
+                ·
+                <a data-preserve-attribution href="{{FRONTEND_URL}}/privacy">Privacy</a>
+            </div>
+        </footer>
+    </div>
+
+    <div class="sticky-cta">
+        <div class="sticky-shell">
+            <a class="cta" data-preserve-attribution href="{{FRONTEND_URL}}/register">Start free trial</a>
+            <p class="micro">7-day trial available. Card required when starting trial.</p>
+        </div>
+    </div>
+
+    <script>
+      (function () {
+        const keepKeys = [
+          "src", "aid", "anonymous_id", "exp_trial_disclosure",
+          "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"
+        ];
+        const params = new URLSearchParams(window.location.search);
+        const carried = new URLSearchParams();
+        for (const key of keepKeys) {
+          const value = params.get(key);
+          if (value) carried.set(key, value);
+        }
+        if (carried.toString()) {
+          document.querySelectorAll("[data-preserve-attribution]").forEach((el) => {
+            if (!(el instanceof HTMLAnchorElement)) return;
+            const url = new URL(el.href);
+            carried.forEach((value, key) => {
+              if (!url.searchParams.has(key)) url.searchParams.set(key, value);
+            });
+            el.href = url.toString();
+          });
+        }
+
+        const getAnonymousId = () => {
+          const key = "ace_anonymous_id";
+          try {
+            const existing = localStorage.getItem(key);
+            if (existing) return existing;
+            const generated = (window.crypto && window.crypto.randomUUID)
+              ? window.crypto.randomUUID()
+              : ("anon_" + Math.random().toString(36).slice(2, 14));
+            localStorage.setItem(key, generated);
+            return generated;
+          } catch {
+            return null;
+          }
+        };
+
+        const attribution = {
+          landing_path: window.location.pathname,
+          device_type: window.matchMedia("(max-width: 900px)").matches ? "mobile" : "desktop",
+        };
+        keepKeys.forEach((key) => {
+          const value = params.get(key);
+          if (value) attribution[key] = value;
+        });
+        if (document.referrer) {
+          try {
+            attribution.referrer_host = new URL(document.referrer).hostname;
+          } catch {
+            // Ignore malformed referrer values.
+          }
+        }
+
+        fetch("/analytics/events", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          keepalive: true,
+          body: JSON.stringify({
+            event_type: "landing_view",
+            anonymous_id: getAnonymousId(),
+            source: params.get("src") || params.get("utm_source"),
+            experiment_variant: params.get("exp_trial_disclosure"),
+            attribution,
+            event_data: { surface: "backend_x" },
+          }),
+        }).catch(() => {});
+      })();
+    </script>
+</body>
+</html>"""
+        return (
+            html.replace("{{FRONTEND_URL}}", frontend_url)
+            .replace("{{DOCS_URL}}", docs_url)
+            .replace("{{CURRENT_YEAR}}", str(current_year))
+            .replace("{{OG_URL}}", x_url)
+            .replace("{{SOCIAL_IMAGE_URL}}", social_image_url)
+        )
+
+    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
+    async def landing_page():
+        """Serve the landing page."""
+        frontend_url = settings.frontend_url.rstrip("/")
+        docs_url = settings.docs_url.rstrip("/")
+        site_url = settings.oauth_redirect_base_url.rstrip("/")
+        social_image_url = f"{site_url}/ace-social-card.png"
+        current_year = datetime.now(UTC).year
+        html = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/svg+xml" href="/ace-favicon.svg">
+    <link rel="shortcut icon" href="/favicon.ico">
+    <title>ACE</title>
+    <meta name="description" content="ACE helps individual developers and knowledge workers improve AI output quality continuously by evolving playbooks from real outcomes.">
+    <meta property="og:title" content="ACE: Improve AI output after every task">
+    <meta property="og:description" content="Turn real outcomes into evolving playbooks that compound AI quality over time.">
+    <meta property="og:image" content="{{SOCIAL_IMAGE_URL}}">
+    <meta property="og:url" content="{{ROOT_URL}}">
+    <meta property="og:site_name" content="ACE">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="ACE: Improve AI output after every task">
+    <meta name="twitter:description" content="Turn real outcomes into evolving playbooks that compound AI quality over time.">
+    <meta name="twitter:image" content="{{SOCIAL_IMAGE_URL}}">
     <style>
         :root {
             --bg-primary: #fdfcfa;
+            --bg-secondary: #f5f3ee;
             --bg-surface: #ffffff;
-            --bg-muted: #f8f6f1;
-            --bg-hero: linear-gradient(180deg, #fdfcfa 0%, #f5f3ee 100%);
+            --bg-soft: rgba(255, 255, 255, 0.85);
             --ink-primary: #1a1a1a;
             --text-secondary: #4a4a4a;
             --text-tertiary: #7a7a7a;
             --accent-primary: #c41e3a;
-            --accent-dark: #a31830;
+            --accent-secondary: #a31830;
             --gold-primary: #b8860b;
-            --border-subtle: rgba(0, 0, 0, 0.08);
-            --border-default: rgba(0, 0, 0, 0.1);
+            --success: #1e7a4d;
+            --border-default: rgba(0, 0, 0, 0.12);
+            --border-soft: rgba(0, 0, 0, 0.08);
+            --border-gold: rgba(184, 134, 11, 0.4);
             --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.08);
-            --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.12);
-            --font-display: 'Playfair Display', Georgia, serif;
-            --font-body: 'Cormorant Garamond', Garamond, serif;
-            --font-mono: 'Fira Code', SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.1);
+            --font-display: "Palatino Linotype", Palatino, "Book Antiqua", Cambria, Georgia, "Times New Roman", serif;
+            --font-body: "Baskerville", "Garamond", "Times New Roman", Times, serif;
         }
+
         * { margin: 0; padding: 0; box-sizing: border-box; }
         html { font-size: 16px; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
         body {
@@ -551,303 +962,456 @@ def _register_routes(app: FastAPI) -> None:
             line-height: 1.65;
             color: var(--ink-primary);
             background: var(--bg-primary);
-            min-height: 100vh;
         }
-        body::before {
+        body::before,
+        body::after {
             content: '';
             position: fixed;
             inset: 0;
-            background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 0L30 60M0 30L60 30M0 0L60 60M60 0L0 60' stroke='%23000000' stroke-width='0.2' fill='none' opacity='0.02'/%3E%3C/svg%3E");
-            opacity: 0.5;
             pointer-events: none;
             z-index: 0;
         }
-
-        /* Navbar */
-        .navbar {
-            background: var(--bg-surface);
-            border-bottom: 1px solid var(--border-subtle);
-            box-shadow: var(--shadow-sm);
-            height: 4rem;
-            position: sticky;
-            top: 0;
-            z-index: 100;
+        body::before {
+            background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 0L30 60M0 30L60 30M0 0L60 60M60 0L0 60' stroke='%23000000' stroke-width='0.2' fill='none' opacity='0.02'/%3E%3C/svg%3E");
+            opacity: 0.45;
         }
-        .navbar-inner {
+        body::after {
+            background:
+              radial-gradient(circle at 10% 5%, rgba(184, 134, 11, 0.14), transparent 32%),
+              radial-gradient(circle at 90% 95%, rgba(196, 30, 58, 0.14), transparent 30%);
+        }
+
+        .page {
+            position: relative;
+            z-index: 1;
             max-width: 1200px;
             margin: 0 auto;
-            padding: 0 2rem;
+            padding: 1.25rem 1.25rem 1.25rem;
+        }
+
+        a {
+            color: var(--accent-primary);
+            text-decoration: none;
+            transition: color 150ms ease;
+        }
+        a:hover { color: var(--accent-secondary); }
+
+        h1, h2, h3 {
+            font-family: var(--font-display);
+            color: var(--ink-primary);
+            line-height: 1.2;
+            letter-spacing: -0.01em;
+        }
+        p { color: var(--text-secondary); }
+
+        .nav {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            height: 100%;
+            gap: 1rem;
+            padding: 0.5rem 0;
         }
-        .navbar-brand {
+        .brand {
             display: flex;
             align-items: center;
             gap: 0.5rem;
             text-decoration: none;
+            color: var(--ink-primary);
         }
-        .navbar-logo {
-            width: 28px;
-            height: 28px;
+        .brand:hover { color: var(--ink-primary); }
+        .brand-logo {
+            width: 40px;
+            height: 56px;
+            flex-shrink: 0;
         }
-        .navbar-title {
+        .brand-title {
             font-family: var(--font-display);
             font-weight: 700;
-            font-size: 1.25rem;
-            color: var(--ink-primary);
-            letter-spacing: -0.01em;
+            font-size: 1.05rem;
+            line-height: 1;
         }
-        .navbar-links {
-            display: flex;
-            align-items: center;
-            gap: 1.5rem;
-        }
-        .navbar-links a {
-            font-family: var(--font-display);
-            font-weight: 500;
-            font-size: 0.9375rem;
-            color: #2d2d2d;
-            text-decoration: none;
-            transition: color 0.2s;
-        }
-        .navbar-links a:hover { color: var(--accent-primary); }
 
-        /* Hero */
-        .hero {
-            background: var(--bg-hero);
-            border-bottom: 1px solid var(--border-subtle);
-            padding: 6rem 2rem;
-            text-align: center;
-            position: relative;
-        }
-        .hero-title {
-            font-family: var(--font-display);
-            font-size: 3.5rem;
-            font-weight: 700;
-            color: var(--ink-primary);
-            margin-bottom: 1rem;
-            letter-spacing: -0.02em;
-            line-height: 1.15;
-        }
-        .hero-subtitle {
-            font-family: var(--font-body);
-            font-size: 1.5rem;
-            color: var(--text-secondary);
-            margin-bottom: 2rem;
-            max-width: 600px;
-            margin-left: auto;
-            margin-right: auto;
-            line-height: 1.6;
-        }
-        .hero-buttons {
+        .nav-links {
             display: flex;
             align-items: center;
-            justify-content: center;
             gap: 1rem;
             flex-wrap: wrap;
+            justify-content: flex-end;
         }
-        .btn {
+        .nav-links a {
             font-family: var(--font-display);
             font-weight: 500;
-            letter-spacing: 0.02em;
-            padding: 0.75rem 2rem;
-            border-radius: 8px;
-            font-size: 1rem;
-            text-decoration: none;
-            display: inline-block;
-            transition: all 250ms cubic-bezier(0.4, 0, 0.2, 1);
-            border: 2px solid transparent;
-            cursor: pointer;
+            font-size: 0.95rem;
+            color: var(--text-secondary);
         }
-        .btn-primary {
-            background: var(--accent-primary);
+        .nav-links a:hover { color: var(--ink-primary); }
+
+        .action {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 10px;
+            padding: 0.66rem 1.1rem;
+            font-size: 0.82rem;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            border: 1px solid var(--border-default);
+            color: var(--ink-primary);
+            background: var(--bg-surface);
+        }
+        .action:hover { background: var(--bg-secondary); color: var(--ink-primary); }
+        .action.primary {
+            background: linear-gradient(145deg, var(--accent-primary), var(--accent-secondary));
             color: #fff;
-            border-color: var(--accent-primary);
+            border-color: transparent;
+            box-shadow: var(--shadow-sm);
         }
-        .btn-primary:hover {
-            background: var(--accent-dark);
-            border-color: var(--accent-dark);
-            box-shadow: 0 4px 12px rgba(196, 30, 58, 0.3);
+        .action.primary:hover { color: #fff; box-shadow: 0 4px 12px rgba(196, 30, 58, 0.3); }
+
+        .hero {
+            margin-top: 2rem;
+            display: grid;
+            grid-template-columns: 1.1fr 1fr;
+            gap: 2rem;
+            align-items: center;
         }
-        .btn-secondary {
-            background: transparent;
-            color: var(--accent-primary);
-            border-color: var(--accent-primary);
+        .eyebrow {
+            display: inline-flex;
+            max-width: fit-content;
+            border-radius: 999px;
+            padding: 0.3rem 0.75rem;
+            background: rgba(184, 134, 11, 0.1);
+            color: var(--text-secondary);
+            font-size: 0.92rem;
+            margin-bottom: 1rem;
         }
-        .btn-secondary:hover {
-            background: rgba(196, 30, 58, 0.05);
-            color: var(--accent-dark);
+        .hero h1 {
+            font-size: 3.75rem;
+            line-height: 1.08;
+            max-width: 16ch;
         }
-        .hero-video-wrap {
-            max-width: 920px;
-            margin: 2.5rem auto 0;
-            padding: 0 0.5rem;
+        .hero-subhead {
+            margin-top: 1rem;
+            font-size: 1.55rem;
+            max-width: 48ch;
+        }
+        .hero-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.7rem;
+            margin-top: 1.35rem;
+        }
+        .micro-copy {
+            margin-top: 0.85rem;
+            color: var(--text-tertiary);
+            font-size: 1.02rem;
+        }
+
+        .hero-visual {
+            border: 1px solid var(--border-gold);
+            border-radius: 16px;
+            background: linear-gradient(160deg, rgba(255, 255, 255, 0.92), rgba(250, 246, 240, 0.97));
+            box-shadow: var(--shadow-md);
+            padding: 1rem;
+            display: grid;
+            gap: 0.9rem;
         }
         .hero-video {
             width: 100%;
             aspect-ratio: 16 / 9;
-            border-radius: 14px;
+            border-radius: 10px;
             border: 1px solid var(--border-default);
-            box-shadow: var(--shadow-md);
-            background: #000;
+            background: var(--bg-secondary);
+            object-fit: cover;
+        }
+        .hero-video-play {
+            align-self: flex-start;
+            margin-top: -0.1rem;
+            border-radius: 999px;
+            border: 1px solid var(--border-default);
+            background: var(--bg-surface);
+            color: var(--ink-primary);
+            font-family: var(--font-display);
+            font-size: 0.8rem;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            padding: 0.35rem 0.75rem;
+            cursor: pointer;
+        }
+        .metric-panel {
+            border-radius: 10px;
+            border: 1px solid var(--border-default);
+            background: var(--bg-surface);
+            padding: 1rem;
+        }
+        .metric-panel p:first-child {
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-size: 0.82rem;
+            color: var(--text-tertiary);
+            margin-bottom: 0.3rem;
+        }
+        .metric-panel strong {
+            display: block;
+            font-family: var(--font-display);
+            font-size: 1.85rem;
+            color: var(--ink-primary);
+        }
+        .metric-panel p:last-child {
+            margin-top: 0.2rem;
+            font-size: 1.08rem;
+            color: var(--text-secondary);
         }
 
-        /* Features */
-        .features {
-            padding: 4rem 2rem;
+        .trust-strip {
+            margin-top: 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            flex-wrap: wrap;
+            padding: 1rem;
+            border-radius: 12px;
+            border: 1px solid var(--border-default);
+            background: rgba(255, 255, 255, 0.75);
+        }
+        .badges {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+        .badges span {
+            padding: 0.35rem 0.7rem;
+            border-radius: 999px;
+            border: 1px solid var(--border-default);
             background: var(--bg-surface);
-        }
-        .features-inner {
-            max-width: 1100px;
-            margin: 0 auto;
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 2rem;
-        }
-        .feature {
-            text-align: center;
-            padding: 1.5rem;
-        }
-        .feature-icon {
-            font-size: 3rem;
-            margin-bottom: 1rem;
-            line-height: 1;
-        }
-        .feature:nth-child(1) .feature-icon { color: var(--ink-primary); }
-        .feature:nth-child(2) .feature-icon,
-        .feature:nth-child(3) .feature-icon { color: var(--accent-primary); }
-        .feature-title {
-            font-family: var(--font-display);
-            font-size: 1.25rem;
-            font-weight: 600;
             color: var(--ink-primary);
+            font-size: 0.9rem;
+        }
+
+        .grid-2 {
+            margin-top: 2rem;
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 1rem;
+        }
+        .panel {
+            border-radius: 12px;
+            border: 1px solid var(--border-default);
+            background: var(--bg-soft);
+            padding: 1.25rem;
+        }
+        .panel h2 {
+            font-size: 2.1rem;
             margin-bottom: 0.75rem;
         }
-        .feature-desc {
-            font-family: var(--font-body);
-            font-size: 1rem;
-            color: var(--text-secondary);
-            line-height: 1.6;
+        .panel ul {
+            list-style: none;
+            display: grid;
+            gap: 0.45rem;
+        }
+        .panel li {
+            position: relative;
+            padding-left: 1rem;
+        }
+        .panel li::before {
+            content: "•";
+            position: absolute;
+            left: 0;
+            color: var(--accent-primary);
         }
 
-        /* Quick Links */
-        .quick-links {
-            padding: 4rem 2rem;
-            background: var(--bg-muted);
-            border-top: 1px solid rgba(0, 0, 0, 0.06);
-        }
-        .quick-links-inner {
-            max-width: 1100px;
-            margin: 0 auto;
+        section {
+            margin-top: 3rem;
         }
         .section-title {
-            font-family: var(--font-display);
-            font-size: 2rem;
-            font-weight: 600;
-            color: var(--ink-primary);
-            text-align: center;
-            margin-bottom: 2rem;
+            font-size: 2.75rem;
+            margin-bottom: 0.35rem;
         }
-        .link-cards {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 1.5rem;
-        }
-        .link-card {
-            display: block;
-            background: var(--bg-surface);
-            border: 1px solid var(--border-default);
-            border-radius: 10px;
-            padding: 1.5rem;
-            text-decoration: none;
-            transition: all 250ms ease;
-        }
-        .link-card:hover {
-            border-color: var(--accent-primary);
-            box-shadow: 0 4px 12px rgba(196, 30, 58, 0.1);
-            transform: translateY(-2px);
-        }
-        .link-card h3 {
-            font-family: var(--font-display);
-            font-size: 1.125rem;
-            font-weight: 600;
-            color: var(--ink-primary);
-            margin-bottom: 0.5rem;
-        }
-        .link-card p {
-            font-family: var(--font-body);
-            font-size: 0.9375rem;
-            color: var(--text-secondary);
-            margin: 0;
-        }
-
-        /* Footer */
-        .footer {
-            background: var(--bg-muted);
-            border-top: 1px solid var(--border-subtle);
-            padding: 3rem 2rem 2rem;
-        }
-        .footer-inner {
-            max-width: 1100px;
-            margin: 0 auto;
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 2rem;
-            margin-bottom: 2rem;
-        }
-        .footer-col h4 {
-            font-family: var(--font-display);
-            font-weight: 600;
-            font-size: 0.875rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: var(--text-secondary);
+        .section-subtitle {
+            font-size: 1.15rem;
             margin-bottom: 1rem;
         }
-        .footer-col ul {
-            list-style: none;
+
+        .cards-3 {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 1rem;
         }
-        .footer-col li {
-            margin-bottom: 0.5rem;
+        .cards-2 {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 1rem;
         }
-        .footer-col a {
-            font-family: var(--font-body);
-            font-size: 0.9375rem;
-            color: #2d2d2d;
-            text-decoration: none;
-            transition: color 0.2s;
+        .card {
+            border-radius: 12px;
+            border: 1px solid var(--border-default);
+            background: var(--bg-surface);
+            padding: 1.1rem;
+            box-shadow: var(--shadow-sm);
         }
-        .footer-col a:hover { color: var(--accent-primary); }
-        .footer-copyright {
-            text-align: center;
-            padding-top: 2rem;
-            border-top: 1px solid var(--border-subtle);
-            font-family: var(--font-body);
-            font-size: 0.875rem;
+        .card h3 {
+            font-size: 1.7rem;
+            margin-bottom: 0.45rem;
+        }
+        .card p {
+            font-size: 1.05rem;
+        }
+
+        .metric-label {
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+            font-size: 0.78rem;
+            letter-spacing: 0.08em;
+        }
+
+        .control-list {
+            display: grid;
+            gap: 0.6rem;
+        }
+        .control-list p {
+            border-left: 3px solid var(--border-default);
+            padding-left: 0.9rem;
+        }
+
+        .price-card ul {
+            margin-top: 0.7rem;
+            padding-left: 1rem;
+            display: grid;
+            gap: 0.2rem;
             color: var(--text-secondary);
         }
-
-        /* Responsive */
-        @media (max-width: 996px) {
-            .hero { padding: 4rem 2rem; }
-            .hero-title { font-size: 2.5rem; }
-            .hero-subtitle { font-size: 1.25rem; }
-            .hero-video-wrap { margin-top: 2rem; }
-            .features-inner { grid-template-columns: 1fr; }
-            .feature { margin-bottom: 1rem; }
-            .link-cards { grid-template-columns: 1fr; }
-            .footer-inner { grid-template-columns: 1fr; }
+        .price {
+            font-family: var(--font-display);
+            color: var(--ink-primary);
+            font-size: 3rem;
+            line-height: 1.1;
+            margin-bottom: 0.1rem;
         }
-        @media (max-width: 576px) {
-            .hero-buttons { flex-direction: column; }
-            .btn { width: 100%; text-align: center; }
-            .navbar-links { gap: 1rem; }
-            .navbar-links a { font-size: 0.8125rem; }
+        .yearly {
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+            display: inline-flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.3rem;
+            margin-bottom: 0.4rem;
+        }
+        .yearly span {
+            display: inline-flex;
+            align-items: center;
+            border-radius: 4px;
+            border: 1px solid rgba(30, 122, 77, 0.35);
+            background: rgba(30, 122, 77, 0.1);
+            color: var(--success);
+            font-size: 0.72rem;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            font-weight: 700;
+            padding: 0.1rem 0.4rem;
+        }
+        .price-card.featured {
+            border-color: var(--border-gold);
+            background: linear-gradient(180deg, rgba(184, 134, 11, 0.08), rgba(255, 255, 255, 1));
+            position: relative;
+        }
+        .popular {
+            position: absolute;
+            top: 0.75rem;
+            right: 0.75rem;
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #7c5c07;
+            background: rgba(184, 134, 11, 0.1);
+            border-radius: 999px;
+            padding: 0.2rem 0.5rem;
         }
 
-        /* Selection */
+        .faq-list {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 1rem;
+        }
+        .faq-item {
+            border-radius: 12px;
+            border: 1px solid var(--border-default);
+            background: var(--bg-surface);
+            padding: 1rem;
+        }
+        .faq-item h3 {
+            font-size: 1.35rem;
+            margin-bottom: 0.35rem;
+        }
+
+        .final-cta {
+            margin-top: 3rem;
+            border-radius: 16px;
+            border: 1px solid var(--border-gold);
+            background: linear-gradient(120deg, rgba(196, 30, 58, 0.1), rgba(184, 134, 11, 0.1));
+            padding: 2rem;
+            text-align: center;
+        }
+        .final-cta h2 {
+            font-size: 3.2rem;
+            max-width: 18ch;
+            margin: 0 auto;
+            line-height: 1.1;
+        }
+        .final-cta p {
+            margin-top: 0.5rem;
+            font-size: 1.35rem;
+        }
+        .final-cta .hero-actions {
+            justify-content: center;
+        }
+
+        .footer {
+            margin-top: 1.2rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border-default);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+        .footer span {
+            font-family: var(--font-display);
+            color: var(--ink-primary);
+            font-size: 1.1rem;
+        }
+        .footer-links {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+        .footer-links a {
+            font-family: var(--font-display);
+            color: var(--accent-primary);
+            font-size: 1.05rem;
+        }
+
+        @media (max-width: 1024px) {
+            .hero { grid-template-columns: 1fr; }
+            .cards-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .hero h1 { max-width: 20ch; }
+            .final-cta h2 { font-size: 2.5rem; }
+        }
+        @media (max-width: 760px) {
+            .page { padding: 1rem 1rem 1rem; }
+            .nav { flex-direction: column; align-items: flex-start; }
+            .nav-links { justify-content: flex-start; }
+            .grid-2,
+            .cards-3,
+            .cards-2,
+            .faq-list { grid-template-columns: 1fr; }
+            .hero h1 { font-size: 2.6rem; }
+            .section-title { font-size: 2.2rem; }
+            .final-cta { padding: 1.3rem; }
+            .final-cta h2 { font-size: 2rem; }
+        }
         ::selection {
             background: rgba(196, 30, 58, 0.2);
             color: var(--ink-primary);
@@ -855,113 +1419,392 @@ def _register_routes(app: FastAPI) -> None:
     </style>
 </head>
 <body>
-    <nav class="navbar">
-        <div class="navbar-inner">
-            <a href="/" class="navbar-brand">
-                <svg class="navbar-logo" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="1" y="1" width="26" height="26" rx="4" fill="#ffffff" stroke="rgba(184,134,11,0.4)" stroke-width="1"/>
-                    <text x="7" y="12" fill="#1a1a1a" font-size="7" font-family="Playfair Display, serif" font-weight="700">A</text>
-                    <g transform="translate(14, 18)">
-                        <path d="M0 -6.5C0 -6.5 -4.5 -1.5 -4.5 1.8C-4.5 3.4 -3.4 4.8 -1.7 4.8C-0.8 4.8 -0.3 4.4 0 3.9C0.3 4.4 0.8 4.8 1.7 4.8C3.4 4.8 4.5 3.4 4.5 1.8C4.5 -1.5 0 -6.5 0 -6.5Z" fill="#1a1a1a"/>
+    <div class="page">
+        <header class="nav">
+            <a href="/" class="brand" aria-label="ACE home">
+                <svg class="brand-logo" viewBox="0 0 40 56" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <rect x="1" y="1" width="38" height="54" rx="4" fill="#ffffff" stroke="rgba(184,134,11,0.4)" stroke-width="1.5"/>
+                    <rect x="4" y="4" width="32" height="48" rx="2" fill="none" stroke="#b8860b" stroke-width="0.5" opacity="0.3"/>
+                    <text x="7" y="14" fill="#1a1a1a" font-size="9" font-family="Palatino Linotype, Georgia, serif" font-weight="700">A</text>
+                    <text x="33" y="50" fill="#1a1a1a" font-size="9" font-family="Palatino Linotype, Georgia, serif" font-weight="700" transform="rotate(180,33,47)">A</text>
+                    <g transform="translate(20, 28)">
+                        <path d="M0 -12C0 -12 -8 -3 -8 3C-8 6 -6 8.5 -3 8.5C-1.5 8.5 -0.5 7.8 0 7C0.5 7.8 1.5 8.5 3 8.5C6 8.5 8 6 8 3C8 -3 0 -12 0 -12Z" fill="#1a1a1a"/>
+                        <path d="M-2.5 7L-3.5 12H3.5L2.5 7" fill="#1a1a1a"/>
                     </g>
                 </svg>
-                <span class="navbar-title">ACE</span>
+                <span class="brand-title">ACE</span>
             </a>
-            <div class="navbar-links">
-                <a href="{{DOCS_URL}}/docs">Documentation</a>
-                <a href="{{FRONTEND_URL}}">Dashboard</a>
-            </div>
-        </div>
-    </nav>
 
-    <section class="hero">
-        <h1 class="hero-title">ACE</h1>
-        <p class="hero-subtitle">Playbooks as a Service &mdash; Self-improving AI instructions</p>
-        <div class="hero-buttons">
-            <a href="{{FRONTEND_URL}}/login" class="btn btn-primary">Get Started</a>
-            <a href="{{DOCS_URL}}/docs/developer-guides/mcp-integration/overview" class="btn btn-secondary">MCP Integration</a>
-        </div>
-        <div class="hero-video-wrap">
-            <video
-                class="hero-video"
-                autoplay
-                loop
-                muted
-                playsinline
-                controls
-                aria-label="ACE platform demo video"
-            >
-                <source src="/landing-hero-video.mp4" type="video/mp4" />
-                Your browser does not support the video tag.
-            </video>
-        </div>
-    </section>
+            <nav class="nav-links" aria-label="Main navigation">
+                <a href="#how-it-works">How it works</a>
+                <a href="#use-cases">Use cases</a>
+                <a href="#pricing">Pricing</a>
+                <a href="{{DOCS_URL}}/docs/getting-started/quick-start" target="_blank" rel="noreferrer">Docs</a>
+                <a href="{{FRONTEND_URL}}/login" class="action" data-preserve-attribution>Sign in</a>
+                <a href="{{FRONTEND_URL}}/register" class="action primary" data-preserve-attribution>Start free</a>
+            </nav>
+        </header>
 
-    <section class="features">
-        <div class="features-inner">
-            <div class="feature">
-                <div class="feature-icon">&spades;</div>
-                <h3 class="feature-title">Self-Improving Playbooks</h3>
-                <p class="feature-desc">Record outcomes after each task, and ACE automatically evolves your playbooks based on real-world results. The more you use them, the better they get.</p>
+        <section class="hero">
+            <div>
+                <p class="eyebrow">Agentic Context Engineer</p>
+                <h1>Your AI workflow gets better after every task.</h1>
+                <p class="hero-subhead">ACE captures what worked, what failed, and what to improve so your assistant becomes more reliable with real use.</p>
+                <div class="hero-actions">
+                    <a href="{{FRONTEND_URL}}/register" class="action primary" data-preserve-attribution>Start free</a>
+                    <a href="{{DOCS_URL}}/docs/getting-started/quick-start" target="_blank" rel="noreferrer" class="action">See 2-min setup</a>
+                </div>
+                <p class="micro-copy">Works with MCP-enabled workflows.</p>
             </div>
-            <div class="feature">
-                <div class="feature-icon">&hearts;</div>
-                <h3 class="feature-title">MCP Integration</h3>
-                <p class="feature-desc">Connect directly to Claude Desktop, Claude Code, or any MCP-compatible agent. Access playbooks without writing integration code.</p>
-            </div>
-            <div class="feature">
-                <div class="feature-icon">&diams;</div>
-                <h3 class="feature-title">Version Control Built-In</h3>
-                <p class="feature-desc">Every change creates a new version. Compare diffs, understand improvements, and roll back if needed. Full history at your fingertips.</p>
-            </div>
-        </div>
-    </section>
 
-    <section class="quick-links">
-        <div class="quick-links-inner">
-            <h2 class="section-title">Quick Links</h2>
-            <div class="link-cards">
-                <a href="{{DOCS_URL}}/docs/getting-started/quick-start" class="link-card">
-                    <h3>Quick Start</h3>
-                    <p>Get up and running in 5 minutes</p>
-                </a>
-                <a href="{{DOCS_URL}}/docs/developer-guides/mcp-integration/claude-code" class="link-card">
-                    <h3>Claude Code Setup</h3>
-                    <p>Integrate with Claude Code CLI</p>
-                </a>
-                <a href="{{DOCS_URL}}/docs/developer-guides/recording-outcomes" class="link-card">
-                    <h3>Recording Outcomes</h3>
-                    <p>Feed ACE the feedback it needs to evolve</p>
-                </a>
+            <div class="hero-visual" aria-hidden="true">
+                <video
+                    class="hero-video js-hero-video"
+                    muted
+                    playsinline
+                    preload="none"
+                    poster="/ace-social-card.png"
+                    data-src="/landing-hero-video.mp4"
+                ></video>
+                <button class="hero-video-play" type="button" data-video-play hidden>Play demo</button>
+                <div class="metric-panel">
+                    <p>Latest improvement</p>
+                    <strong>Fewer repeat bugs</strong>
+                    <p>ACE turns recurring issues into rules your agent follows.</p>
+                </div>
             </div>
-        </div>
-    </section>
+        </section>
 
-    <footer class="footer">
-        <div class="footer-inner">
-            <div class="footer-col">
-                <h4>Documentation</h4>
+        <section class="trust-strip" aria-label="Integrations">
+            <p>Built for people shipping real work with AI</p>
+            <div class="badges">
+                <span>Claude Code</span>
+                <span>Codex</span>
+                <span>MCP</span>
+            </div>
+        </section>
+
+        <section class="grid-2">
+            <article class="panel">
+                <h2>Stop restarting from scratch every session.</h2>
                 <ul>
-                    <li><a href="{{DOCS_URL}}/docs/getting-started/quick-start">Getting Started</a></li>
-                    <li><a href="{{DOCS_URL}}/docs/user-guides/creating-playbooks">User Guides</a></li>
-                    <li><a href="{{DOCS_URL}}/docs/developer-guides/mcp-integration/overview">MCP Integration</a></li>
+                    <li>Great prompts disappear between sessions.</li>
+                    <li>Output quality drifts from task to task.</li>
+                    <li>You spend too much time fixing repeated misses.</li>
                 </ul>
-            </div>
-            <div class="footer-col">
-                <h4>Product</h4>
+            </article>
+            <article class="panel">
+                <h2>ACE makes improvement a personal system.</h2>
                 <ul>
-                    <li><a href="{{FRONTEND_URL}}">Dashboard</a></li>
-                    <li><a href="{{FRONTEND_URL}}/pricing">Pricing</a></li>
+                    <li>Capture what worked and what failed automatically.</li>
+                    <li>Generate focused evolutions from real execution history.</li>
+                    <li>Get high-signal playbook improvements generated from your real outcomes.</li>
                 </ul>
+            </article>
+        </section>
+
+        <section id="how-it-works">
+            <h2 class="section-title">How it works</h2>
+            <p class="section-subtitle">Simple workflow, compounding results.</p>
+            <div class="cards-3">
+                <article class="card">
+                    <h3>Connect your workflow</h3>
+                    <p>Plug ACE into your MCP-compatible environment in minutes.</p>
+                </article>
+                <article class="card">
+                    <h3>Run your normal tasks</h3>
+                    <p>Code, research, write, and ship exactly how you already work.</p>
+                </article>
+                <article class="card">
+                    <h3>Receive evolved playbooks</h3>
+                    <p>ACE creates improved playbook versions as your outcomes accumulate.</p>
+                </article>
             </div>
-        </div>
-        <div class="footer-copyright">
-            &copy; 2026 ACE
-        </div>
-    </footer>
+        </section>
+
+        <section id="use-cases">
+            <h2 class="section-title">Where individuals see immediate lift</h2>
+            <p class="section-subtitle">From coding tasks to general knowledge work, ACE compounds what you learn.</p>
+            <div class="cards-3">
+                <article class="card">
+                    <h3>Ship cleaner code faster</h3>
+                    <p>Reduce repeat bugs by turning review feedback into reusable patterns.</p>
+                </article>
+                <article class="card">
+                    <h3>Deliver consistent client work</h3>
+                    <p>Keep docs, analysis, and deliverables aligned to your quality bar.</p>
+                </article>
+                <article class="card">
+                    <h3>Build your personal AI system</h3>
+                    <p>Convert one-off wins into durable playbooks that compound over time.</p>
+                </article>
+            </div>
+        </section>
+
+        <section>
+            <h2 class="section-title">Measure compounding gains</h2>
+            <p class="section-subtitle">Track these signals to verify that ACE is improving your workflow over time.</p>
+            <div class="cards-3">
+                <article class="card">
+                    <p class="metric-label">Repeat errors</p>
+                    <h3>Down</h3>
+                    <p>Track recurring misses and shrink them with each evolution run.</p>
+                </article>
+                <article class="card">
+                    <p class="metric-label">Task cycle time</p>
+                    <h3>Faster</h3>
+                    <p>Measure how quickly you move from prompt to production-ready output.</p>
+                </article>
+                <article class="card">
+                    <p class="metric-label">First-pass quality</p>
+                    <h3>Higher</h3>
+                    <p>Increase how often outputs are usable without extensive rewrites.</p>
+                </article>
+            </div>
+        </section>
+
+        <section>
+            <h2 class="section-title">Built for production-minded individuals</h2>
+            <div class="control-list">
+                <p>Versioned playbooks let you inspect every evolution run over time.</p>
+                <p>Scoped API access with a clear audit trail of evolution activity.</p>
+                <p>Works with your existing stack instead of forcing a platform rewrite.</p>
+            </div>
+        </section>
+
+        <section id="pricing">
+            <h2 class="section-title">Start free, upgrade when you need more power</h2>
+            <div class="cards-3">
+                <article class="card price-card">
+                    <h3>Starter</h3>
+                    <p class="price">$9/mo</p>
+                    <p class="yearly">$90/yr <span>17% off</span></p>
+                    <p>For individuals building momentum with AI.</p>
+                    <ul>
+                        <li>100 evolution runs / month</li>
+                        <li>5 playbooks</li>
+                        <li>Premium AI models</li>
+                    </ul>
+                </article>
+                <article class="card price-card featured">
+                    <p class="popular">Most popular</p>
+                    <h3>Pro</h3>
+                    <p class="price">$29/mo</p>
+                    <p class="yearly">$290/yr <span>17% off</span></p>
+                    <p>For power users shipping every day.</p>
+                    <ul>
+                        <li>500 evolution runs / month</li>
+                        <li>20 playbooks</li>
+                        <li>Data export</li>
+                    </ul>
+                </article>
+                <article class="card price-card">
+                    <h3>Ultra</h3>
+                    <p class="price">$79/mo</p>
+                    <p class="yearly">$790/yr <span>17% off</span></p>
+                    <p>For heavy individual workflows.</p>
+                    <ul>
+                        <li>2,000 evolution runs / month</li>
+                        <li>100 playbooks</li>
+                        <li>Data export</li>
+                    </ul>
+                </article>
+            </div>
+            <div class="hero-actions">
+                <a href="{{FRONTEND_URL}}/register" class="action primary" data-preserve-attribution>Start free</a>
+                <a href="{{FRONTEND_URL}}/login" class="action" data-preserve-attribution>Sign in</a>
+            </div>
+        </section>
+
+        <section>
+            <h2 class="section-title">FAQ</h2>
+            <div class="faq-list">
+                <article class="faq-item">
+                    <h3>How long does setup take?</h3>
+                    <p>Most users can connect ACE to an MCP workflow in about 5 minutes.</p>
+                </article>
+                <article class="faq-item">
+                    <h3>How are changes applied?</h3>
+                    <p>Evolutions generate new playbook versions automatically, and you can inspect version history in the app.</p>
+                </article>
+                <article class="faq-item">
+                    <h3>Will this work with my current AI toolchain?</h3>
+                    <p>ACE is built to layer onto MCP-compatible tools instead of replacing them.</p>
+                </article>
+                <article class="faq-item">
+                    <h3>Is this only for coding?</h3>
+                    <p>No. ACE works for coding and broader knowledge workflows like research, writing, and analysis.</p>
+                </article>
+            </div>
+        </section>
+
+        <section class="final-cta">
+            <h2>Make your AI improve continuously</h2>
+            <p>Turn today's tasks into tomorrow's better results.</p>
+            <div class="hero-actions">
+                <a href="{{FRONTEND_URL}}/register" class="action primary" data-preserve-attribution>Start free</a>
+                <a href="{{DOCS_URL}}/docs/getting-started/quick-start" target="_blank" rel="noreferrer" class="action">Open quick start</a>
+            </div>
+        </section>
+
+        <footer class="footer">
+            <span>&copy; {{CURRENT_YEAR}} ACE</span>
+            <div class="footer-links">
+                <a href="{{FRONTEND_URL}}/terms" data-preserve-attribution>Terms</a>
+                <a href="{{FRONTEND_URL}}/privacy" data-preserve-attribution>Privacy</a>
+                <a href="{{DOCS_URL}}" target="_blank" rel="noreferrer">Docs</a>
+            </div>
+        </footer>
+    </div>
+    <script>
+      (function () {
+        const KEEP_KEYS = [
+          "src",
+          "aid",
+          "anonymous_id",
+          "exp_trial_disclosure",
+          "utm_source",
+          "utm_medium",
+          "utm_campaign",
+          "utm_term",
+          "utm_content",
+        ];
+
+        const params = new URLSearchParams(window.location.search);
+        const carried = new URLSearchParams();
+        KEEP_KEYS.forEach((key) => {
+          const value = params.get(key);
+          if (value) carried.set(key, value);
+        });
+
+        if (carried.toString()) {
+          document.querySelectorAll("[data-preserve-attribution]").forEach((el) => {
+            if (!(el instanceof HTMLAnchorElement)) return;
+            const url = new URL(el.href);
+            carried.forEach((value, key) => {
+              if (!url.searchParams.has(key)) url.searchParams.set(key, value);
+            });
+            el.href = url.toString();
+          });
+        }
+
+        const getAnonymousId = () => {
+          const key = "ace_anonymous_id";
+          try {
+            const existing = localStorage.getItem(key);
+            if (existing) return existing;
+            const generated = (window.crypto && window.crypto.randomUUID)
+              ? window.crypto.randomUUID()
+              : ("anon_" + Math.random().toString(36).slice(2, 14));
+            localStorage.setItem(key, generated);
+            return generated;
+          } catch {
+            return null;
+          }
+        };
+
+        const getAttribution = () => {
+          const attribution = {
+            landing_path: window.location.pathname,
+            device_type: window.matchMedia("(max-width: 900px)").matches ? "mobile" : "desktop",
+          };
+          KEEP_KEYS.forEach((key) => {
+            const value = params.get(key);
+            if (value) attribution[key] = value;
+          });
+          if (document.referrer) {
+            try {
+              attribution.referrer_host = new URL(document.referrer).hostname;
+            } catch {
+              // Ignore malformed referrer values.
+            }
+          }
+          return attribution;
+        };
+
+        const postEvent = (eventType, eventData = {}) => {
+          fetch("/analytics/events", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            keepalive: true,
+            body: JSON.stringify({
+              event_type: eventType,
+              anonymous_id: getAnonymousId(),
+              source: params.get("src") || params.get("utm_source"),
+              experiment_variant: params.get("exp_trial_disclosure"),
+              attribution: getAttribution(),
+              event_data: eventData,
+            }),
+          }).catch(() => {});
+        };
+
+        postEvent("landing_view", { surface: "backend" });
+
+        const video = document.querySelector(".js-hero-video");
+        if (!(video instanceof HTMLVideoElement)) return;
+
+        const playButton = document.querySelector("[data-video-play]");
+        const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        const saveData = Boolean(navigator.connection && navigator.connection.saveData);
+        const isMobile = window.matchMedia("(max-width: 900px)").matches;
+        let sourceAttached = false;
+
+        const attachVideoSource = () => {
+          if (sourceAttached) return;
+          const src = video.getAttribute("data-src");
+          if (!src) return;
+          const source = document.createElement("source");
+          source.src = src;
+          source.type = "video/mp4";
+          video.appendChild(source);
+          video.load();
+          sourceAttached = true;
+          postEvent("hero_video_loaded", { surface: "backend" });
+        };
+
+        video.addEventListener(
+          "play",
+          () => postEvent("hero_video_played", { surface: "backend" }),
+          { once: true }
+        );
+
+        if (isMobile || reduceMotion || saveData) {
+          if (playButton instanceof HTMLButtonElement) {
+            playButton.hidden = false;
+            playButton.addEventListener("click", () => {
+              attachVideoSource();
+              video.controls = true;
+              video.play().catch(() => {});
+              playButton.hidden = true;
+            });
+          }
+          return;
+        }
+
+        const observer = new IntersectionObserver(
+          (entries) => {
+            const entry = entries[0];
+            if (!entry || !entry.isIntersecting) return;
+            attachVideoSource();
+            video.autoplay = true;
+            video.loop = true;
+            video.play().catch(() => {});
+            observer.disconnect();
+          },
+          { threshold: 0.35 }
+        );
+        observer.observe(video);
+      })();
+    </script>
 </body>
 </html>"""
-        return html.replace("{{FRONTEND_URL}}", frontend_url).replace("{{DOCS_URL}}", docs_url)
+        return (
+            html.replace("{{FRONTEND_URL}}", frontend_url)
+            .replace("{{DOCS_URL}}", docs_url)
+            .replace("{{CURRENT_YEAR}}", str(current_year))
+            .replace("{{ROOT_URL}}", site_url)
+            .replace("{{SOCIAL_IMAGE_URL}}", social_image_url)
+        )
 
 
 # Create the application instance

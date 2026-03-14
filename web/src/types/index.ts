@@ -259,17 +259,75 @@ export interface ConversionFunnel {
   days: number;
   start_date: string;
   end_date: string;
+  landing_views: number;
+  register_starts: number;
+  register_completes: number;
   signups: number;
   trial_checkout_intent: number;
   trial_started: number;
   first_playbook_created: number;
   paid_active_non_trial: number;
+  conversion_landing_to_register_start_pct: number;
+  conversion_register_start_to_register_complete_pct: number;
+  conversion_landing_to_register_complete_pct: number;
   conversion_signup_to_checkout_intent_pct: number;
   conversion_checkout_intent_to_trial_started_pct: number;
   conversion_trial_started_to_first_playbook_pct: number;
   conversion_first_playbook_to_paid_active_non_trial_pct: number;
   conversion_signup_to_trial_started_pct: number;
   conversion_signup_to_paid_active_non_trial_pct: number;
+}
+
+export interface AttributionSnapshot {
+  src?: string;
+  source?: string;
+  channel?: string;
+  campaign?: string;
+  aid?: string;
+  anonymous_id?: string;
+  referrer_host?: string;
+  landing_path?: string;
+  device_type?: 'mobile' | 'desktop';
+  exp_trial_disclosure?: string;
+  experiment_variant?: string;
+  utm_source?: string;
+  utm_medium?: string;
+  utm_campaign?: string;
+  utm_term?: string;
+  utm_content?: string;
+}
+
+export type AcquisitionEventType =
+  | 'landing_view'
+  | 'register_start'
+  | 'register_submit'
+  | 'register_step_transition'
+  | 'register_success'
+  | 'trial_checkout_intent'
+  | 'trial_started'
+  | 'first_playbook_created'
+  | 'experiment_exposure'
+  | 'hero_video_loaded'
+  | 'hero_video_played'
+  | 'oauth_error'
+  | 'oauth_fallback_used';
+
+export interface AnalyticsEventPayload {
+  event_type: AcquisitionEventType;
+  event_id?: string;
+  anonymous_id?: string;
+  source?: string;
+  channel?: string;
+  campaign?: string;
+  experiment_variant?: string;
+  attribution?: AttributionSnapshot;
+  event_data?: Record<string, unknown>;
+}
+
+export interface FunnelFilters {
+  days?: number;
+  source?: string;
+  experiment_variant?: string;
 }
 
 export interface TopUser {

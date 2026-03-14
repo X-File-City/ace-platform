@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ErrorBoundary } from './components/ErrorBoundary/ErrorBoundary';
 import { Layout } from './components/Layout/Layout';
 import { AuthPage } from './pages/Auth/AuthPage';
+import { LandingPage } from './pages/Landing';
 import { OAuthCallback } from './pages/OAuthCallback/OAuthCallback';
 import { VerifyEmail } from './pages/VerifyEmail/VerifyEmail';
 import { ForgotPassword } from './pages/ForgotPassword/ForgotPassword';
@@ -24,6 +25,7 @@ import { PrivacyPolicy } from './pages/Legal/PrivacyPolicy';
 import { AdminDashboard } from './pages/Admin/AdminDashboard';
 import { AdminUsers } from './pages/Admin/AdminUsers';
 import { AdminUserDetail } from './pages/Admin/AdminUserDetail';
+import { XLandingPage } from './pages/XLanding/XLandingPage';
 import { NotFound } from './pages/NotFound/NotFound';
 import './styles/globals.css';
 
@@ -73,9 +75,27 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 }
 
 function AppRoutes() {
+  const xLandingEnabled = import.meta.env.VITE_X_LANDING_ENABLED !== 'false';
+
   return (
     <Routes>
       {/* Public routes */}
+      <Route
+        path="/"
+        element={
+          <PublicRoute>
+            <LandingPage />
+          </PublicRoute>
+        }
+      />
+      <Route
+        path="/x"
+        element={
+          <PublicRoute>
+            {xLandingEnabled ? <XLandingPage /> : <Navigate to="/" replace />}
+          </PublicRoute>
+        }
+      />
       <Route
         path="/login"
         element={
@@ -227,7 +247,6 @@ function AppRoutes() {
       />
 
       {/* Redirects */}
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );

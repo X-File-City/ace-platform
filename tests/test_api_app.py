@@ -59,6 +59,38 @@ class TestHealthEndpoints:
             assert data["status"] == "not_ready"
             assert data["database"] == "disconnected"
 
+    def test_root_landing_contains_social_meta_tags(self, client):
+        """Landing page should include required OG/Twitter metadata tags."""
+        response = client.get("/")
+        assert response.status_code == 200
+        html = response.text
+
+        assert 'property="og:title"' in html
+        assert 'property="og:description"' in html
+        assert 'property="og:image"' in html
+        assert 'property="og:url"' in html
+        assert 'property="og:site_name"' in html
+        assert 'name="twitter:card"' in html
+        assert 'name="twitter:title"' in html
+        assert 'name="twitter:description"' in html
+        assert 'name="twitter:image"' in html
+
+    def test_x_landing_contains_social_meta_tags(self, client):
+        """X landing page should include required OG/Twitter metadata tags."""
+        response = client.get("/x")
+        assert response.status_code == 200
+        html = response.text
+
+        assert 'property="og:title"' in html
+        assert 'property="og:description"' in html
+        assert 'property="og:image"' in html
+        assert 'property="og:url"' in html
+        assert 'property="og:site_name"' in html
+        assert 'name="twitter:card"' in html
+        assert 'name="twitter:title"' in html
+        assert 'name="twitter:description"' in html
+        assert 'name="twitter:image"' in html
+
 
 class TestExceptionHandlers:
     """Tests for global exception handlers."""
@@ -305,6 +337,21 @@ class TestCORSMiddleware:
 class TestAppConfiguration:
     """Tests for application configuration."""
 
+    _MCP_INITIALIZE_HEADERS = {
+        "Accept": "application/json, text/event-stream",
+        "Content-Type": "application/json",
+    }
+    _MCP_INITIALIZE_PAYLOAD = {
+        "jsonrpc": "2.0",
+        "id": "init-1",
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2025-06-18",
+            "capabilities": {},
+            "clientInfo": {"name": "test-client", "version": "1.0"},
+        },
+    }
+
     def test_create_app_returns_fastapi_instance(self):
         """Test that create_app returns a FastAPI instance."""
         from fastapi import FastAPI
@@ -328,6 +375,38 @@ class TestAppConfiguration:
         routes = [route.path for route in test_app.routes]
         assert "/health" in routes
         assert "/ready" in routes
+
+    def test_mcp_streamable_and_legacy_endpoints_are_mounted(self):
+        """Mounted MCP endpoints should exist for both HTTP and legacy SSE."""
+        with TestClient(app) as client:
+            response = client.get("/mcp")
+            assert response.status_code != 404
+
+            # Probe legacy SSE mount without opening a streaming SSE connection.
+            response = client.options("/mcp/sse")
+            assert response.status_code != 404
+
+    def test_mcp_root_post_does_not_redirect(self):
+        """POST /mcp should initialize directly without slash redirect."""
+        with TestClient(app) as client:
+            response = client.post(
+                "/mcp",
+                headers=self._MCP_INITIALIZE_HEADERS,
+                json=self._MCP_INITIALIZE_PAYLOAD,
+                follow_redirects=False,
+            )
+            assert response.status_code != 307
+            assert response.headers.get("mcp-session-id")
+
+    def test_app_lifespan_can_restart_after_streamable_http_session_shutdown(self):
+        """Repeated app startups should not fail on one-shot session manager reuse."""
+        with TestClient(app) as first_client:
+            first_response = first_client.get("/health")
+            assert first_response.status_code == 200
+
+        with TestClient(app) as second_client:
+            second_response = second_client.get("/health")
+            assert second_response.status_code == 200
 
 
 class TestRequestProcessing:
