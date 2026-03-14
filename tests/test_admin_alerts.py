@@ -23,6 +23,12 @@ from ace_platform.core.metering import (
 class TestIsAdminAlertsEnabled:
     """Tests for is_admin_alerts_enabled."""
 
+    def test_async_session_factory_alias_available(self):
+        """The worker import alias should remain available for admin alerts."""
+        from ace_platform.db.session import AsyncSessionLocal, async_session_factory
+
+        assert async_session_factory is AsyncSessionLocal
+
     def test_enabled_when_email_configured(self):
         """Test alerts are enabled when admin email is set."""
         with patch("ace_platform.core.admin_alerts.get_settings") as mock_settings:

@@ -34,6 +34,9 @@ AsyncSessionLocal = async_sessionmaker(
     autoflush=False,
 )
 
+# Backward-compatible alias used by background tasks.
+async_session_factory = AsyncSessionLocal
+
 # Sync engine and session factory for Celery workers
 sync_engine = create_engine(
     settings.database_url,
