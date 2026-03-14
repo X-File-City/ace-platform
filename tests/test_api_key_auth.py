@@ -13,6 +13,7 @@ from uuid import uuid4
 
 import pytest
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -304,6 +305,60 @@ class TestAuthenticateApiKey:
         # Check last_used_at is set
         await async_session.refresh(key)
         assert key.last_used_at is not None
+
+    async def test_authenticate_recovers_from_disconnect_during_last_used_update(
+        self,
+        async_session: AsyncSession,
+        test_user: User,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        """Transient disconnects during last_used_at flush should not fail auth."""
+        result = await create_api_key_async(async_session, test_user.id, "Test Key")
+        await async_session.commit()
+
+        async def flaky_flush(*args, **kwargs):
+            raise DBAPIError(
+                statement="UPDATE api_keys SET last_used_at = :last_used_at",
+                params={},
+                orig=Exception("connection was closed in the middle of operation"),
+                connection_invalidated=True,
+            )
+
+        monkeypatch.setattr(async_session, "flush", flaky_flush)
+
+        auth_result = await authenticate_api_key_async(async_session, result.full_key)
+
+        assert auth_result is not None
+        key, user = auth_result
+        assert key.id == result.key_id
+        assert user.id == test_user.id
+
+        await async_session.commit()
+        persisted_key = await async_session.get(ApiKey, result.key_id)
+        assert persisted_key is not None
+        assert persisted_key.last_used_at is None
+
+    async def test_authenticate_reraises_non_disconnect_db_errors(
+        self,
+        async_session: AsyncSession,
+        test_user: User,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        """Unexpected DB errors during flush should still surface."""
+        result = await create_api_key_async(async_session, test_user.id, "Test Key")
+        await async_session.commit()
+
+        async def broken_flush(*args, **kwargs):
+            raise DBAPIError(
+                statement="UPDATE api_keys SET last_used_at = :last_used_at",
+                params={},
+                orig=Exception("duplicate key value violates unique constraint"),
+            )
+
+        monkeypatch.setattr(async_session, "flush", broken_flush)
+
+        with pytest.raises(DBAPIError, match="duplicate key value"):
+            await authenticate_api_key_async(async_session, result.full_key)
 
     async def test_authenticate_invalid_key_denied(self, async_session: AsyncSession):
         """Test that an invalid key is denied."""

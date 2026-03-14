@@ -6,12 +6,14 @@ returned once at creation time.
 """
 
 import hashlib
+import logging
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -20,6 +22,8 @@ from ace_platform.db.models import ApiKey, User
 # API key format: ace_<random_32_chars>
 API_KEY_PREFIX = "ace_"
 API_KEY_LENGTH = 32  # Length of random part
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -72,6 +76,36 @@ def hash_api_key(key: str) -> str:
         Hex-encoded hash of the key.
     """
     return hashlib.sha256(key.encode()).hexdigest()
+
+
+async def _get_active_api_key_record(
+    db: AsyncSession,
+    hashed_key: str,
+) -> ApiKey | None:
+    """Load the active API key record for a hashed key value."""
+    result = await db.execute(
+        select(ApiKey).where(
+            ApiKey.hashed_key == hashed_key,
+            ApiKey.revoked_at.is_(None),
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+def _is_connection_drop_during_flush(exc: DBAPIError) -> bool:
+    """Identify transient disconnects that should not fail API-key auth."""
+    if exc.connection_invalidated:
+        return True
+
+    message = str(exc.orig).lower()
+    return any(
+        fragment in message
+        for fragment in (
+            "connection was closed in the middle of operation",
+            "connection does not exist",
+            "connection is closed",
+        )
+    )
 
 
 async def create_api_key_async(
@@ -220,7 +254,7 @@ async def authenticate_api_key_async(
 ) -> tuple[ApiKey, User] | None:
     """Authenticate an API key and return the associated key and user.
 
-    Also updates the last_used_at timestamp.
+    Also updates the last_used_at timestamp on a best-effort basis.
 
     Args:
         db: Async database session.
@@ -234,20 +268,27 @@ async def authenticate_api_key_async(
 
     hashed = hash_api_key(api_key)
 
-    result = await db.execute(
-        select(ApiKey).where(
-            ApiKey.hashed_key == hashed,
-            ApiKey.revoked_at.is_(None),
-        )
-    )
-    key_record = result.scalar_one_or_none()
+    key_record = await _get_active_api_key_record(db, hashed)
 
     if not key_record:
         return None
 
-    # Update last used timestamp
+    # last_used_at is metadata; a dropped pooled connection should not block auth.
     key_record.last_used_at = datetime.now(UTC)
-    await db.flush()
+    try:
+        await db.flush()
+    except DBAPIError as exc:
+        if not _is_connection_drop_during_flush(exc):
+            raise
+
+        logger.warning(
+            "Skipping api key last_used_at update after transient database disconnect",
+            exc_info=exc,
+        )
+        await db.rollback()
+        key_record = await _get_active_api_key_record(db, hashed)
+        if not key_record:
+            return None
 
     # Get user
     user = await db.get(User, key_record.user_id)
