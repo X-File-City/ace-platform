@@ -63,13 +63,38 @@ class TestAuthenticateApiKeyResilience:
         db.rollback = AsyncMock()
         db.get = AsyncMock(return_value=user)
 
-        key_record, authenticated_user = await authenticate_api_key_async(db, full_key)
+        authenticated_key, authenticated_user = await authenticate_api_key_async(db, full_key)
 
-        assert key_record is refreshed_key
+        assert authenticated_key is refreshed_key
         assert authenticated_user is user
         assert db.execute.await_count == 2
         db.rollback.assert_awaited_once()
         db.get.assert_awaited_once_with(User, refreshed_key.user_id)
+
+    async def test_revalidates_key_after_disconnect_rollback(self):
+        """A key revoked before the recovery query should no longer authenticate."""
+        user = _build_user()
+        full_key, initial_key = _build_api_key(user.id)
+
+        db = MagicMock()
+        db.execute = AsyncMock(side_effect=[_ScalarResult(initial_key), _ScalarResult(None)])
+        db.flush = AsyncMock(
+            side_effect=DBAPIError(
+                statement="UPDATE api_keys SET last_used_at = :last_used_at",
+                params={},
+                orig=Exception("connection was closed in the middle of operation"),
+                connection_invalidated=True,
+            )
+        )
+        db.rollback = AsyncMock()
+        db.get = AsyncMock(return_value=user)
+
+        auth_result = await authenticate_api_key_async(db, full_key)
+
+        assert auth_result is None
+        assert db.execute.await_count == 2
+        db.rollback.assert_awaited_once()
+        db.get.assert_not_awaited()
 
     async def test_reraises_non_disconnect_db_errors(self):
         """Unexpected DB failures during flush should still propagate."""

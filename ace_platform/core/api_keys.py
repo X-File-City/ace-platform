@@ -290,7 +290,6 @@ async def authenticate_api_key_async(
         if not key_record:
             return None
 
-    # Get user
     user = await db.get(User, key_record.user_id)
     if not user or not user.is_active:
         return None
