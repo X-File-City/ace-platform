@@ -273,7 +273,12 @@ async def authenticate_api_key_async(
     if not key_record:
         return None
 
+    user = await db.get(User, key_record.user_id)
+    if not user or not user.is_active:
+        return None
+
     # last_used_at is metadata; a dropped pooled connection should not block auth.
+    original_last_used_at = key_record.last_used_at
     key_record.last_used_at = datetime.now(UTC)
     try:
         await db.flush()
@@ -285,15 +290,11 @@ async def authenticate_api_key_async(
             "Skipping api key last_used_at update after transient database disconnect",
             exc_info=exc,
         )
+        # Rollback expires session-bound objects, so detach the auth result first.
+        key_record.last_used_at = original_last_used_at
+        db.expunge(key_record)
+        db.expunge(user)
         await db.rollback()
-        key_record = await _get_active_api_key_record(db, hashed)
-        if not key_record:
-            return None
-
-    # Get user
-    user = await db.get(User, key_record.user_id)
-    if not user or not user.is_active:
-        return None
 
     return key_record, user
 

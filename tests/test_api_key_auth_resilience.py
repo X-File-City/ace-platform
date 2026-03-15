@@ -45,13 +45,10 @@ class TestAuthenticateApiKeyResilience:
     async def test_recovers_from_disconnect_during_last_used_flush(self):
         """A dropped connection on last_used_at update should not fail auth."""
         user = _build_user()
-        full_key, initial_key = _build_api_key(user.id)
-        _, refreshed_key = _build_api_key(user.id)
+        full_key, key_record = _build_api_key(user.id)
 
         db = MagicMock()
-        db.execute = AsyncMock(
-            side_effect=[_ScalarResult(initial_key), _ScalarResult(refreshed_key)]
-        )
+        db.execute = AsyncMock(return_value=_ScalarResult(key_record))
         db.flush = AsyncMock(
             side_effect=DBAPIError(
                 statement="UPDATE api_keys SET last_used_at = :last_used_at",
@@ -63,13 +60,16 @@ class TestAuthenticateApiKeyResilience:
         db.rollback = AsyncMock()
         db.get = AsyncMock(return_value=user)
 
-        key_record, authenticated_user = await authenticate_api_key_async(db, full_key)
+        authenticated_key, authenticated_user = await authenticate_api_key_async(db, full_key)
 
-        assert key_record is refreshed_key
+        assert authenticated_key is key_record
         assert authenticated_user is user
-        assert db.execute.await_count == 2
+        assert authenticated_key.last_used_at is None
+        assert db.execute.await_count == 1
         db.rollback.assert_awaited_once()
-        db.get.assert_awaited_once_with(User, refreshed_key.user_id)
+        db.get.assert_awaited_once_with(User, key_record.user_id)
+        db.expunge.assert_any_call(authenticated_key)
+        db.expunge.assert_any_call(user)
 
     async def test_reraises_non_disconnect_db_errors(self):
         """Unexpected DB failures during flush should still propagate."""
