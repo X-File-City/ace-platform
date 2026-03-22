@@ -9,7 +9,7 @@
     {
       "id": "welcome-overview",
       "title": "Welcome to ACE Platform",
-      "description": "ACE Platform is a hosted service for self-improving AI playbooks. The codebase has four major areas: **ace_core/** contains the upstream three-agent algorithm (Generator, Reflector, Curator), **ace_platform/** is the FastAPI backend with API routes, business logic, database models, MCP server, and Celery workers, **web/** is the React/TypeScript dashboard, and **tests/** houses 54+ test files. Configuration files for Docker, Fly.io deployment, and CI/CD round out the project.",
+      "description": "ACE Platform is a hosted service for self-improving AI playbooks. The codebase has four major areas highlighted here: the upstream three-agent algorithm, the backend with API routes, business logic, database models, an MCP server, and background workers, the frontend dashboard, and a comprehensive test suite. Configuration for containerization, deployment, and CI/CD rounds out the project.",
       "focusDirectory": "",
       "colorMode": "fileTypes",
       "highlightLayers": [
@@ -31,7 +31,7 @@
     {
       "id": "ace-core-agents",
       "title": "ACE Core: Three-Agent Architecture",
-      "description": "The heart of ACE is a self-improvement loop with three specialized agents. The **Generator** creates improved playbook versions, the **Reflector** evaluates changes against outcomes, and the **Curator** decides whether to accept, reject, or modify proposals. Together they form an autonomous feedback loop that continuously refines AI instructions. The highlighted orchestrator coordinates the full cycle, while a dedicated prompts directory contains each agent's system instructions.",
+      "description": "ACE runs a self-improvement loop with three agents. The **Generator** creates improved playbook versions, the **Reflector** evaluates changes against outcomes, and the **Curator** accepts, rejects, or modifies proposals. The highlighted orchestrator coordinates the full cycle.",
       "focusDirectory": "ace_core/ace",
       "colorMode": "fileTypes",
       "highlightLayers": [
@@ -69,7 +69,7 @@
     {
       "id": "platform-api",
       "title": "Platform API: FastAPI Routes",
-      "description": "The platform backend is a FastAPI application with 11 route modules covering authentication, playbook CRUD, billing, OAuth, admin, and more. The highlighted entry point sets up the app with middleware and lifecycle hooks. Routes are organized by domain — authentication handles login, signup, and password reset; playbooks manages operations and semantic matching; billing integrates with Stripe; and OAuth supports Google and GitHub login flows.",
+      "description": "The backend is a FastAPI application with 11 route modules. The highlighted entry point sets up middleware and lifecycle hooks. Routes are organized by domain — authentication, playbook CRUD and semantic matching, Stripe billing, and Google/GitHub OAuth.",
       "focusDirectory": "ace_platform/api",
       "colorMode": "fileTypes",
       "highlightLayers": [
@@ -108,7 +108,7 @@
     {
       "id": "core-services",
       "title": "Business Logic & Services",
-      "description": "This layer contains 29 service modules that implement the platform's business logic, decoupled from HTTP routing. Key services handle playbook self-improvement orchestration, semantic search using embeddings, usage tracking and rate limiting, Stripe billing integration, compliance logging, and webhook event processing. The two highlight groups show the split between evolution-related services and the commercial billing stack.",
+      "description": "Twenty-nine service modules implement business logic decoupled from HTTP routing. The two highlight groups show the split between evolution-related services and the commercial billing and metering stack.",
       "focusDirectory": "ace_platform/core",
       "colorMode": "fileTypes",
       "highlightLayers": [
@@ -143,7 +143,7 @@
     {
       "id": "database-layer",
       "title": "Database & MCP Server",
-      "description": "The database layer defines ORM models for Users, Playbooks, Evolutions, API Keys, Audit Logs, OAuth Accounts, and Billing data, with 14 migrations tracking schema changes. The MCP server exposes playbook operations as tools for AI assistants like Claude, handling tool registration, authentication, and protocol compliance. Background workers run asynchronous jobs such as playbook evolution and admin alerting.",
+      "description": "The database layer defines ORM models with 14 migrations tracking schema changes. The MCP server exposes playbook operations as tools for AI assistants like Claude. Background workers handle asynchronous jobs such as playbook evolution and admin alerting.",
       "focusDirectory": "ace_platform",
       "colorMode": "fileTypes",
       "highlightLayers": [
@@ -189,7 +189,7 @@
     {
       "id": "frontend-dashboard",
       "title": "Frontend Dashboard",
-      "description": "The frontend is a full-featured SaaS dashboard built with React, TypeScript, Tailwind CSS, and Shadcn UI. The highlighted pages area contains 21 route-based views covering landing, authentication, the main dashboard, playbook editing, API key management, billing, admin tools, usage analytics, and settings. Shared components provide layout scaffolding, OAuth buttons, playbook rendering, and subscription gating. State management uses React Context, with Mixpanel for analytics.",
+      "description": "A full-featured SaaS dashboard built with React, TypeScript, Tailwind CSS, and Shadcn UI. The highlighted pages area contains 21 route-based views, while shared components provide layout, playbook rendering, and subscription gating.",
       "focusDirectory": "web/src",
       "colorMode": "fileTypes",
       "highlightLayers": [
@@ -225,7 +225,7 @@
     {
       "id": "testing-and-devops",
       "title": "Testing, CI/CD & Deployment",
-      "description": "The project has a comprehensive test suite with over 54 test files. CI/CD runs via GitHub Actions — pushes to main auto-deploy to staging, with manual production deploys. A multi-stage container build produces eight targets, and deployment configs manage production and staging environments. Highlighted scripts automate infrastructure setup, and two documentation areas provide developer guides alongside a published docs site.",
+      "description": "Over 54 test files cover the platform end-to-end. GitHub Actions auto-deploys to staging on every push to main, with manual production deploys. Highlighted scripts and configs manage the multi-stage container build and both environments.",
       "focusDirectory": "",
       "colorMode": "fileTypes",
       "highlightLayers": [
@@ -271,6 +271,13 @@
           "description": "Browse the test suite to see coverage across the platform"
         }
       ]
+    },
+    {
+      "id": "summary",
+      "title": "Putting It All Together",
+      "description": "You've now seen the full ACE Platform — from the three-agent self-improvement loop at its core, through the API and service layers that host it as a product, to the frontend that puts it in users' hands. The platform turns playbook evolution into a managed service with authentication, billing, usage metering, and background processing all wired together. Explore any area that caught your eye, or check the documentation for deeper dives.",
+      "focusDirectory": "",
+      "colorMode": "fileTypes"
     }
   ],
   "metadata": {
