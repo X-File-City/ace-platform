@@ -31,7 +31,7 @@
     {
       "id": "ace-core-agents",
       "title": "ACE Core: Three-Agent Architecture",
-      "description": "ACE runs a self-improvement loop with three agents. The **Generator** creates improved playbook versions, the **Reflector** evaluates changes against outcomes, and the **Curator** accepts, rejects, or modifies proposals. The highlighted orchestrator coordinates the full cycle.",
+      "description": "ACE runs a self-improvement loop with three agents. The Generator — creates improved playbook versions, the Reflector — evaluates changes against outcomes, and the Curator — accepts, rejects, or modifies proposals. The highlighted orchestrator coordinates the full cycle.",
       "focusDirectory": "ace_core/ace",
       "colorMode": "fileTypes",
       "highlightLayers": [
